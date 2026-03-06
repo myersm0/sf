@@ -3,6 +3,7 @@ use std::io::{self, Read, Write};
 pub struct PickerItem {
 	pub key: String,
 	pub display: String,
+	pub score: Option<f32>,
 }
 
 pub fn run_picker(items: &[PickerItem], title: &str) -> Option<String> {
@@ -20,14 +21,25 @@ pub fn run_picker(items: &[PickerItem], title: &str) -> Option<String> {
 	}
 
 	for (index, item) in items.iter().enumerate() {
-		writeln!(
-			stderr,
-			" {:>width$}) {}: {}",
-			index + 1,
-			item.key,
-			item.display,
-			width = number_width,
-		).ok();
+		match item.score {
+			Some(score) => writeln!(
+				stderr,
+				" {:>width$}) {}: {} [{:.3}]",
+				index + 1,
+				item.key,
+				item.display,
+				score,
+				width = number_width,
+			).ok(),
+			None => writeln!(
+				stderr,
+				" {:>width$}) {}: {}",
+				index + 1,
+				item.key,
+				item.display,
+				width = number_width,
+			).ok(),
+		};
 	}
 	writeln!(stderr).ok();
 	write!(stderr, " go to (q to cancel): ").ok();

@@ -47,8 +47,8 @@ enum Commands {
 		#[arg(long)]
 		since: Option<String>,
 	},
-	/// Show co-access neighbors of a key
-	Related {
+	/// Show co-access neighbors of a key (NPMI)
+	Coaccess {
 		key: String,
 		#[arg(short, long, default_value_t = 15)]
 		number: usize,
@@ -81,8 +81,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 		Commands::Search { query, tags, author, since } => {
 			commands::search::run(&db, &config, query, tags, author, since)?;
 		}
-		Commands::Related { key, number } => {
-			todo!("clew related")
+		Commands::Coaccess { key, number } => {
+			commands::coaccess::run(&db, &config, &key, number)?;
 		}
 		Commands::Audit { mount_path } => {
 			todo!("clew audit")

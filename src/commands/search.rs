@@ -73,10 +73,12 @@ pub fn run(
 		return Ok(());
 	}
 
+	let has_scores = query.is_some();
 	let items: Vec<PickerItem> = results.iter()
 		.map(|r| PickerItem {
 			key: r.key.clone(),
 			display: r.purpose.clone(),
+			score: if has_scores { Some(r.score) } else { None },
 		})
 		.collect();
 
