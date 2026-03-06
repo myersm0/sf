@@ -1,6 +1,7 @@
 mod commands;
 mod config;
 mod db;
+mod embed;
 mod meta;
 mod picker;
 
@@ -87,7 +88,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 			todo!("clew audit")
 		}
 		Commands::Sync => {
-			todo!("clew sync")
+			commands::sync::run(&db, &config)?;
 		}
 		Commands::Edit { key } => {
 			todo!("clew edit")
