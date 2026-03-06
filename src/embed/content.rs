@@ -4,26 +4,35 @@ use sha2::{Digest, Sha256};
 
 use crate::meta::DirMeta;
 
-pub fn gather_text(dir: &Path, meta: &DirMeta) -> String {
-	let mut parts = vec![meta.purpose.clone()];
+pub struct GatheredContent {
+	pub text: String,
+	pub has_docs: bool,
+}
 
-	let readme_path = dir.join("README.md");
-	if readme_path.exists() {
+pub fn gather_text(dir: &Path, meta: &DirMeta) -> GatheredContent {
+	let mut parts = vec![meta.purpose.clone()];
+	let mut has_docs = false;
+
+	if meta.index.is_empty() {
+		let readme_path = dir.join("README.md");
 		if let Ok(contents) = std::fs::read_to_string(&readme_path) {
 			parts.push(contents);
+			has_docs = true;
 		}
-	}
-
-	for filename in &meta.index {
-		let file_path = dir.join(filename);
-		if file_path.exists() {
+	} else {
+		for filename in &meta.index {
+			let file_path = dir.join(filename);
 			if let Ok(contents) = std::fs::read_to_string(&file_path) {
 				parts.push(contents);
+				has_docs = true;
 			}
 		}
 	}
 
-	parts.join("\n\n")
+	GatheredContent {
+		text: parts.join("\n\n"),
+		has_docs,
+	}
 }
 
 pub fn compute_content_hash(text: &str) -> String {

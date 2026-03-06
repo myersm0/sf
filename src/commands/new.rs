@@ -84,7 +84,7 @@ pub fn run(
 		tags: tags.clone(),
 		index: Vec::new(),
 	};
-	meta.save(&dir_path)?;
+	meta.save(&dir_path, &config.meta_filenames)?;
 
 	db.insert_directory(&key, &created, &purpose, &author, &tags)?;
 	let location = config.contents_path.to_string_lossy().to_string();

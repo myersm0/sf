@@ -1,5 +1,5 @@
 [package]
-name = "clew"
+name = "sf"
 version = "0.1.0"
 edition = "2021"
 description = "Flat directory manager with semantic search and backup tracking"

@@ -14,7 +14,7 @@ use crate::db::Database;
 
 #[derive(Parser)]
 #[command(
-	name = "clew",
+	name = "sf",
 	about = "Flat directory manager with semantic search and backup tracking",
 )]
 struct Cli {
@@ -58,9 +58,17 @@ enum Commands {
 		mount_path: Option<PathBuf>,
 	},
 	/// Re-embed all directories
-	Sync,
+	Sync {
+		/// Embed directories even if they have no docs
+		#[arg(short, long)]
+		force: bool,
+	},
 	/// Edit a directory's metadata
 	Edit {
+		key: String,
+	},
+	/// Register an existing directory in the database
+	Import {
 		key: String,
 	},
 }
@@ -84,14 +92,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 		Commands::Coaccess { key, number } => {
 			commands::coaccess::run(&db, &config, &key, number)?;
 		}
-		Commands::Audit { mount_path } => {
-			todo!("clew audit")
+		Commands::Audit { mount_path: _ } => {
+			eprintln!("sf audit is not yet implemented");
 		}
-		Commands::Sync => {
-			commands::sync::run(&db, &config)?;
+		Commands::Sync { force } => {
+			commands::sync::run(&db, &config, force)?;
 		}
-		Commands::Edit { key } => {
-			todo!("clew edit")
+		Commands::Edit { key: _ } => {
+			eprintln!("sf edit is not yet implemented");
+		}
+		Commands::Import { key } => {
+			commands::import::run(&db, &config, &key)?;
 		}
 	}
 

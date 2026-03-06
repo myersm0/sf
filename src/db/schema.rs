@@ -25,7 +25,8 @@ impl Database {
 				author TEXT NOT NULL,
 				tags TEXT NOT NULL DEFAULT '[]',
 				embedding BLOB,
-				content_hash TEXT
+				content_hash TEXT,
+				has_docs INTEGER NOT NULL DEFAULT 0
 			);
 
 			CREATE TABLE IF NOT EXISTS locations (
@@ -82,7 +83,7 @@ impl Database {
 
 	pub fn get_directory(&self, key: &str) -> Result<Option<DirectoryRow>, Box<dyn std::error::Error>> {
 		let mut statement = self.connection.prepare(
-			"SELECT key, created, purpose, author, tags FROM directories WHERE key = ?1"
+			"SELECT key, created, purpose, author, tags, has_docs FROM directories WHERE key = ?1"
 		)?;
 		let mut rows = statement.query_map(params![key], |row| {
 			Ok(DirectoryRow {
@@ -91,6 +92,7 @@ impl Database {
 				purpose: row.get(2)?,
 				author: row.get(3)?,
 				tags_json: row.get(4)?,
+				has_docs: row.get::<_, i32>(5)? != 0,
 			})
 		})?;
 		match rows.next() {
@@ -137,7 +139,7 @@ impl Database {
 			param_values.push(Box::new(since.to_string()));
 		}
 
-		let mut sql = "SELECT key, created, purpose, author, tags FROM directories".to_string();
+		let mut sql = "SELECT key, created, purpose, author, tags, has_docs FROM directories".to_string();
 		if !clauses.is_empty() {
 			sql.push_str(" WHERE ");
 			sql.push_str(&clauses.join(" AND "));
@@ -155,6 +157,7 @@ impl Database {
 				purpose: row.get(2)?,
 				author: row.get(3)?,
 				tags_json: row.get(4)?,
+				has_docs: row.get::<_, i32>(5)? != 0,
 			})
 		})?;
 
@@ -195,10 +198,11 @@ impl Database {
 		key: &str,
 		embedding: &[u8],
 		content_hash: &str,
+		has_docs: bool,
 	) -> Result<(), Box<dyn std::error::Error>> {
 		self.connection.execute(
-			"UPDATE directories SET embedding = ?1, content_hash = ?2 WHERE key = ?3",
-			params![embedding, content_hash, key],
+			"UPDATE directories SET embedding = ?1, content_hash = ?2, has_docs = ?3 WHERE key = ?4",
+			params![embedding, content_hash, has_docs as i32, key],
 		)?;
 		Ok(())
 	}
@@ -232,6 +236,7 @@ pub struct DirectoryRow {
 	pub purpose: String,
 	pub author: String,
 	pub tags_json: String,
+	pub has_docs: bool,
 }
 
 impl DirectoryRow {

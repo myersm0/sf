@@ -7,6 +7,7 @@ struct ScoredResult {
 	key: String,
 	purpose: String,
 	score: f32,
+	has_docs: bool,
 }
 
 pub fn run(
@@ -30,14 +31,18 @@ pub fn run(
 
 	let results: Vec<ScoredResult> = match query {
 		Some(ref query_text) => {
-			let client = OllamaClient::new(&config.ollama_url, &config.embedding_model);
+			let client = OllamaClient::new(&config.ollama_url, &config.embedding_model, config.max_embed_chars);
 			let query_embedding = client.embed(query_text)?;
 
 			let mut scored: Vec<ScoredResult> = Vec::new();
+			let mut skipped = 0;
 			for row in &candidates {
 				let embedding_bytes = match db.get_embedding(&row.key)? {
 					Some(bytes) => bytes,
-					None => continue,
+					None => {
+						skipped += 1;
+						continue;
+					}
 				};
 				let stored_embedding = embed::bytes_to_embedding(&embedding_bytes);
 				let score = embed::cosine_similarity(&query_embedding, &stored_embedding);
@@ -45,16 +50,24 @@ pub fn run(
 					key: row.key.clone(),
 					purpose: row.purpose.clone(),
 					score,
+					has_docs: row.has_docs,
 				});
+			}
+
+			if skipped > 0 {
+				eprintln!(
+					"  ({} director{} skipped: no embedding; run `sf sync`)",
+					skipped,
+					if skipped == 1 { "y" } else { "ies" },
+				);
 			}
 
 			scored.sort_by(|a, b| {
 				b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal)
 			});
 
-			let scores: Vec<f32> = scored.iter().map(|s| s.score).collect();
-			let cutoff = embed::elbow_cutoff(&scores, 1, 15);
-			scored.truncate(cutoff);
+			scored.retain(|r| r.score >= config.min_similarity);
+			scored.truncate(config.max_search_results);
 			scored
 		}
 		None => {
@@ -63,24 +76,37 @@ pub fn run(
 					key: row.key.clone(),
 					purpose: row.purpose.clone(),
 					score: 0.0,
+					has_docs: row.has_docs,
 				})
 				.collect()
 		}
 	};
 
 	if results.is_empty() {
-		eprintln!("no results (do you need to run `clew sync`?)");
+		eprintln!("no results (do you need to run `sf sync`?)");
 		return Ok(());
 	}
 
 	let has_scores = query.is_some();
 	let items: Vec<PickerItem> = results.iter()
-		.map(|r| PickerItem {
-			key: r.key.clone(),
-			display: r.purpose.clone(),
-			score: if has_scores { Some(r.score) } else { None },
+		.map(|r| {
+			let display = if !r.has_docs && has_scores {
+				format!("{} (!)", r.purpose)
+			} else {
+				r.purpose.clone()
+			};
+			PickerItem {
+				key: r.key.clone(),
+				display,
+				score: if has_scores { Some(r.score) } else { None },
+			}
 		})
 		.collect();
+
+	let any_no_docs = has_scores && results.iter().any(|r| !r.has_docs);
+	if any_no_docs {
+		eprintln!("  (!) = no docs; score may be unreliable");
+	}
 
 	if let Some(selected_key) = picker::run_picker(&items, "search") {
 		let dir_path = config.contents_path.join(&selected_key);
