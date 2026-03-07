@@ -1,4 +1,6 @@
 # sf
+[![CI](https://github.com/myersm0/sf/actions/workflows/ci.yml/badge.svg)](https://github.com/myersm0/sf/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/myersm0/sf)](https://github.com/myersm0/sf/releases/latest)
 
 A CLI tool for managing a flat hierarchy of directories, each identified by a 6-digit hexadecimal key. Directories are related to each other through metadata, semantic search, and co-access patterns rather than filesystem hierarchy.
 
