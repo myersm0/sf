@@ -34,7 +34,7 @@ pub fn run(db: &Database, config: &AppConfig, force: bool) -> Result<(), Box<dyn
 
 		if !content.has_docs {
 			no_docs.push(row.key.clone());
-			if !force {
+			if !force && config.warn_no_docs {
 				eprintln!("  skip {}: no docs (use --force to embed anyway)", row.key);
 				skipped += 1;
 				continue;
@@ -62,7 +62,7 @@ pub fn run(db: &Database, config: &AppConfig, force: bool) -> Result<(), Box<dyn
 		}
 	}
 
-	if !no_docs.is_empty() && !force {
+	if !no_docs.is_empty() && !force && config.warn_no_docs {
 		eprintln!(
 			"\n  {} director{} without docs: {}",
 			no_docs.len(),

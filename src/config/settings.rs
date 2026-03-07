@@ -13,6 +13,7 @@ pub struct AppConfig {
 	pub max_embed_chars: usize,
 	pub min_similarity: f32,
 	pub max_search_results: usize,
+	pub warn_no_docs: bool,
 	pub default_author: String,
 	pub meta_filenames: Vec<String>,
 	pub backup_locations: Vec<PathBuf>,
@@ -32,6 +33,7 @@ impl Default for AppConfig {
 			max_embed_chars: 6000,
 			min_similarity: 0.5,
 			max_search_results: 15,
+			warn_no_docs: true,
 			default_author: String::new(),
 			meta_filenames: vec![
 				".meta.json".to_string(),

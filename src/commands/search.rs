@@ -88,9 +88,10 @@ pub fn run(
 	}
 
 	let has_scores = query.is_some();
+	let show_doc_warnings = has_scores && config.warn_no_docs;
 	let items: Vec<PickerItem> = results.iter()
 		.map(|r| {
-			let display = if !r.has_docs && has_scores {
+			let display = if !r.has_docs && show_doc_warnings {
 				format!("{} (!)", r.purpose)
 			} else {
 				r.purpose.clone()
@@ -103,7 +104,7 @@ pub fn run(
 		})
 		.collect();
 
-	let any_no_docs = has_scores && results.iter().any(|r| !r.has_docs);
+	let any_no_docs = show_doc_warnings && results.iter().any(|r| !r.has_docs);
 	if any_no_docs {
 		eprintln!("  (!) = no docs; score may be unreliable");
 	}
