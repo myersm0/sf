@@ -1,20 +1,20 @@
 # sf
 
-A CLI tool for managing a flat hierarchy of directories, each identified by a 6-digit hex key. Directories are related to each other through metadata, semantic search, and co-access patterns rather than filesystem hierarchy.
+A CLI tool for managing a flat hierarchy of directories, each identified by a 6-digit hexadecimal key. Directories are related to each other through metadata, semantic search, and co-access patterns rather than filesystem hierarchy.
 
 Inspired by my days as a cyclist in San Francisco.
 
 ## Why flat directories?
 
-Instead of encoding meaning into paths, meaning lives in metadata (`.meta.json`) and in the documentation within each directory. Search — both semantic and metadata-filtered — replaces browsing. Co-access patterns surface implicit relationships: directories you tend to visit together become associated automatically.
+Instead of encoding meaning into paths, meaning lives in metadata (`.meta.json`) and in the documentation within each directory. Search — both semantic and metadata-filtered — replaces browsing. Co-access patterns uncover implicit relationships: directories you tend to visit together become associated automatically.
 
-This sounds counterintuitive, but the advantages compound quickly:
+This sounds counterintuitive, but the advantages are considerable:
 
 - You never waste time choosing where to put something.
 - You never lose track of something because you filed it under the wrong parent.
 - You can freely associate a directory with multiple topics, projects, or contexts through tags and co-access, rather than being forced into a single hierarchy.
-- Because keys are stable, every reference to a directory — in scripts, notes, other projects — remains valid forever.
-- Writing good documentation pays off directly: the richer your READMEs and metadata, the better your search results. The system rewards good doc habits by making well-documented directories easier to find.
+- Because folder names ("keys") are stable, every reference to a directory — in scripts, notes, other projects — remains valid forever (except in the case of user error, data loss, etc)
+- Writing good documentation pays off directly: the richer your READMEs and metadata, the better your search results
 
 ## How it works
 
@@ -38,7 +38,7 @@ Each directory has a `.meta.json` file:
 
 ```json
 {
-  "created": "2025-03-15",
+  "created": "2026-03-06",
   "purpose": "My `sf` project for semantic management of directories",
   "author": "myersm0",
   "tags": ["CLI tools", "Rust"]
