@@ -18,6 +18,27 @@ This sounds counterintuitive, but the advantages are considerable:
 - Because folder names ("keys") are stable, every reference to a directory — in scripts, notes, other projects — remains valid forever (except in the case of user error, data loss, etc)
 - Writing good documentation pays off directly: the richer your READMEs and metadata, the better your search results
 
+## Installation
+```bash
+curl -fsSL https://raw.githubusercontent.com/myersm0/sf/main/install.sh | sh
+```
+
+This detects your platform, downloads the latest precompiled binary, and installs it to ~/.local/bin with shell functions in ~/.local/share/sf/. It then prints the lines to add to your shell profile.
+
+Requires [ollama](https://ollama.com/) running locally. After installing ollama, pull an embedding model such as `qwen3-embedding` (or another model of your choice):
+```bash
+ollama pull qwen3-embedding
+```
+
+Shell setup (required):
+Add to your .bashrc, .zshrc, etc.:
+```bash
+export PATH="$HOME/.local/bin:$PATH"  # if not already there
+source "$HOME/.local/share/sf/sf.sh"
+```
+
+The source line loads wrapper functions so that sf search and sf coaccess actually cd into the selected directory rather than just printing its path.
+
 ## How it works
 
 All managed directories live at a single level under a root (default `~/contents/`):
