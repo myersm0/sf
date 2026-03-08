@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use crate::config::AppConfig;
 use crate::db::Database;
 use crate::meta::DirMeta;
@@ -6,8 +8,10 @@ pub fn run(
 	db: &Database,
 	config: &AppConfig,
 	key: &str,
+	path: Option<PathBuf>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-	let dir_path = config.contents_path.join(key);
+	let root = path.unwrap_or_else(|| config.contents_path.clone());
+	let dir_path = root.join(key);
 	if !dir_path.exists() {
 		return Err(format!("directory not found: {}", dir_path.display()).into());
 	}
@@ -21,7 +25,7 @@ pub fn run(
 	})?;
 
 	db.insert_directory(key, &meta.created, &meta.purpose, &meta.author, &meta.tags)?;
-	let location = config.contents_path.to_string_lossy().to_string();
+	let location = root.to_string_lossy().to_string();
 	db.add_location(key, &location)?;
 
 	eprintln!("imported {} ({})", key, meta.purpose);

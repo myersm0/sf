@@ -1,4 +1,5 @@
 use std::io::{self, Write};
+use std::path::PathBuf;
 
 use chrono::Local;
 use rand::Rng;
@@ -13,10 +14,10 @@ fn generate_key() -> String {
 	format!("{:06x}", value)
 }
 
-fn generate_unique_key(db: &Database, config: &AppConfig) -> Result<String, Box<dyn std::error::Error>> {
+fn generate_unique_key(db: &Database, root: &PathBuf) -> Result<String, Box<dyn std::error::Error>> {
 	for _ in 0..100 {
 		let key = generate_key();
-		let dir_path = config.contents_path.join(&key);
+		let dir_path = root.join(&key);
 		if !db.key_exists(&key)? && !dir_path.exists() {
 			return Ok(key);
 		}
@@ -38,8 +39,10 @@ pub fn run(
 	purpose: Option<String>,
 	author: Option<String>,
 	tags: Option<Vec<String>>,
+	path: Option<PathBuf>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-	let key = generate_unique_key(db, config)?;
+	let root = path.unwrap_or_else(|| config.contents_path.clone());
+	let key = generate_unique_key(db, &root)?;
 	let created = Local::now().format("%Y-%m-%d").to_string();
 
 	let purpose = match purpose {
@@ -74,7 +77,7 @@ pub fn run(
 		}
 	});
 
-	let dir_path = config.contents_path.join(&key);
+	let dir_path = root.join(&key);
 	std::fs::create_dir_all(&dir_path)?;
 
 	let meta = DirMeta {
@@ -87,7 +90,7 @@ pub fn run(
 	meta.save(&dir_path, &config.meta_filenames)?;
 
 	db.insert_directory(&key, &created, &purpose, &author, &tags)?;
-	let location = config.contents_path.to_string_lossy().to_string();
+	let location = root.to_string_lossy().to_string();
 	db.add_location(&key, &location)?;
 
 	println!("{}", dir_path.display());

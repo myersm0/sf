@@ -109,7 +109,8 @@ pub fn run(
 		.collect();
 
 	if let Some(selected_key) = picker::run_picker(&items, "coaccess (npmi)") {
-		let dir_path = config.contents_path.join(&selected_key);
+		let dir_path = db.resolve_key(&selected_key)?
+			.ok_or_else(|| format!("no accessible location for {}", selected_key))?;
 		println!("{}", dir_path.display());
 		db.record_visit(&selected_key)?;
 	}

@@ -32,6 +32,9 @@ enum Commands {
 		author: Option<String>,
 		#[arg(long, value_delimiter = ',')]
 		tags: Option<Vec<String>>,
+		/// Create in a specific root instead of the default contents_path
+		#[arg(long)]
+		path: Option<PathBuf>,
 	},
 	/// Display metadata for a key
 	Info {
@@ -70,6 +73,9 @@ enum Commands {
 	/// Register an existing directory in the database
 	Import {
 		key: String,
+		/// Root path where the directory lives (defaults to contents_path)
+		#[arg(long)]
+		path: Option<PathBuf>,
 	},
 }
 
@@ -80,8 +86,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 	db.initialize()?;
 
 	match cli.command {
-		Commands::New { purpose, author, tags } => {
-			commands::new::run(&db, &config, purpose, author, tags)?;
+		Commands::New { purpose, author, tags, path } => {
+			commands::new::run(&db, &config, purpose, author, tags, path)?;
 		}
 		Commands::Info { key } => {
 			commands::info::run(&db, &key)?;
@@ -98,11 +104,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 		Commands::Sync { force } => {
 			commands::sync::run(&db, &config, force)?;
 		}
-		Commands::Edit { key: _ } => {
-			eprintln!("sf edit is not yet implemented");
+		Commands::Edit { key } => {
+			commands::edit::run(&db, &config, &key)?;
 		}
-		Commands::Import { key } => {
-			commands::import::run(&db, &config, &key)?;
+		Commands::Import { key, path } => {
+			commands::import::run(&db, &config, &key, path)?;
 		}
 	}
 

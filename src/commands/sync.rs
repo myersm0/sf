@@ -13,12 +13,14 @@ pub fn run(db: &Database, config: &AppConfig, force: bool) -> Result<(), Box<dyn
 	let mut no_docs = Vec::new();
 
 	for row in &rows {
-		let dir_path = config.contents_path.join(&row.key);
-		if !dir_path.exists() {
-			eprintln!("  skip {}: directory not found", row.key);
-			skipped += 1;
-			continue;
-		}
+		let dir_path = match db.resolve_key(&row.key)? {
+			Some(p) => p,
+			None => {
+				eprintln!("  skip {}: no accessible location", row.key);
+				skipped += 1;
+				continue;
+			}
+		};
 
 		let meta = match DirMeta::load(&dir_path, &config.meta_filenames) {
 			Ok(m) => m,

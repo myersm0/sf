@@ -61,6 +61,21 @@ impl Database {
 		Ok(())
 	}
 
+	pub fn update_directory(
+		&self,
+		key: &str,
+		purpose: &str,
+		author: &str,
+		tags: &[String],
+	) -> Result<(), Box<dyn std::error::Error>> {
+		let tags_json = serde_json::to_string(tags)?;
+		self.connection.execute(
+			"UPDATE directories SET purpose = ?1, author = ?2, tags = ?3 WHERE key = ?4",
+			params![purpose, author, tags_json, key],
+		)?;
+		Ok(())
+	}
+
 	pub fn add_location(
 		&self,
 		key: &str,
@@ -109,6 +124,17 @@ impl Database {
 			row.get::<_, String>(0)
 		})?.collect::<Result<Vec<_>, _>>()?;
 		Ok(paths)
+	}
+
+	pub fn resolve_key(&self, key: &str) -> Result<Option<std::path::PathBuf>, Box<dyn std::error::Error>> {
+		let locations = self.get_locations(key)?;
+		for mount_path in &locations {
+			let dir_path = std::path::Path::new(mount_path).join(key);
+			if dir_path.exists() {
+				return Ok(Some(dir_path));
+			}
+		}
+		Ok(None)
 	}
 
 	pub fn get_visits(&self) -> Result<Vec<String>, Box<dyn std::error::Error>> {
