@@ -98,8 +98,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 		Commands::Coaccess { key, number } => {
 			commands::coaccess::run(&db, &config, &key, number)?;
 		}
-		Commands::Audit { mount_path: _ } => {
-			eprintln!("sf audit is not yet implemented");
+		Commands::Audit { mount_path } => {
+			commands::audit::run(&db, &config, mount_path)?;
 		}
 		Commands::Sync { force } => {
 			commands::sync::run(&db, &config, force)?;

@@ -5,3 +5,4 @@ pub mod sync;
 pub mod coaccess;
 pub mod import;
 pub mod edit;
+pub mod audit;

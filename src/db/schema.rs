@@ -246,6 +246,38 @@ impl Database {
 		}
 	}
 
+	pub fn get_all_keys(&self) -> Result<Vec<String>, Box<dyn std::error::Error>> {
+		let mut statement = self.connection.prepare(
+			"SELECT key FROM directories"
+		)?;
+		let keys = statement.query_map([], |row| {
+			row.get::<_, String>(0)
+		})?.collect::<Result<Vec<_>, _>>()?;
+		Ok(keys)
+	}
+
+	pub fn get_all_locations(&self) -> Result<Vec<(String, String)>, Box<dyn std::error::Error>> {
+		let mut statement = self.connection.prepare(
+			"SELECT key, mount_path FROM locations"
+		)?;
+		let pairs = statement.query_map([], |row| {
+			Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+		})?.collect::<Result<Vec<_>, _>>()?;
+		Ok(pairs)
+	}
+
+	pub fn remove_location(
+		&self,
+		key: &str,
+		mount_path: &str,
+	) -> Result<(), Box<dyn std::error::Error>> {
+		self.connection.execute(
+			"DELETE FROM locations WHERE key = ?1 AND mount_path = ?2",
+			params![key, mount_path],
+		)?;
+		Ok(())
+	}
+
 	pub fn key_exists(&self, key: &str) -> Result<bool, Box<dyn std::error::Error>> {
 		let count: i64 = self.connection.query_row(
 			"SELECT COUNT(*) FROM directories WHERE key = ?1",
