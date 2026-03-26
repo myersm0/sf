@@ -15,7 +15,9 @@ src/
 │   ├── info.rs          Display metadata for a key
 │   ├── search.rs        Semantic + metadata search with picker
 │   ├── sync.rs          (Re)embed all directories via ollama
-│   └── coaccess.rs      NPMI co-access scoring over visit log
+│   ├── coaccess.rs      NPMI co-access scoring over visit log
+│   ├── edit.rs          Open .meta.json in $EDITOR, re-embed if changed
+│   └── audit.rs         Scan locations, report backup status
 ├── config/
 │   └── settings.rs      TOML config with platform-appropriate defaults
 ├── db/
@@ -32,15 +34,21 @@ src/
 
 ### Data flow
 
-**Creating a directory:** `sf new` generates a random 6-digit hex key, creates `~/contents/<key>/`, writes `.meta.json`, and inserts a row into the `directories` table with the contents path registered as the first location.
+**Creating a directory:** `sf new` generates a random 6-digit hex key, creates the directory at the specified root (or default `contents_path`), writes `.meta.json`, and inserts a row into the `directories` table with that root registered as the first location.
 
-**Importing:** `sf import <key>` reads an existing `.meta.json` and registers it in the database. No embedding happens at import time.
+**Importing:** `sf import <key>` reads an existing `.meta.json` and registers it in the database. Accepts `--path` for non-default locations. No embedding happens at import time.
 
-**Embedding:** `sf sync` iterates all registered directories. For each, it gathers text (purpose + README.md or index files), hashes it, compares against the stored hash, and if changed, sends the text to ollama and stores the resulting f32 vector as a blob in SQLite. Directories without docs are skipped unless `--force` is used.
+**Embedding:** `sf sync` iterates all registered directories. For each, it resolves the key to an accessible location, gathers text (purpose + README.md or index files), hashes it, compares against the stored hash, and if changed, sends the text to ollama and stores the resulting f32 vector as a blob in SQLite. Directories without docs are skipped unless `--force` is used or `warn_no_docs` is set to false in config.
 
 **Searching:** `sf search "query"` embeds the query via ollama, computes cosine similarity against all stored embeddings, filters by `min_similarity`, caps at `max_search_results`, and presents the picker. Metadata filters (author, tags, since) narrow the candidate set before scoring. Selecting a result records a visit in the `visits` table.
 
 **Co-access:** `sf coaccess <key>` reads the visit log, computes NPMI over a sliding window, and surfaces directories frequently visited in the same session as the given key.
+
+**Editing:** `sf edit <key>` resolves the key, opens `.meta.json` in `$EDITOR`, validates the JSON on save, updates the database row, and re-embeds if the content hash changed.
+
+**Auditing:** `sf audit` scans `contents_path` and configured `backup_locations` for hex directories. Reports lost keys (no known locations), underprotected keys (fewer than 2 locations), and strays (on disk but not registered). Auto-registers newly discovered locations for known keys.
+
+**Key resolution:** Commands that access directory contents (search, sync, edit, coaccess) resolve keys via `db.resolve_key()`, which checks each registered location until it finds one that's mounted. This supports directories that live on different drives.
 
 ### SQLite schema
 
@@ -76,7 +84,9 @@ All settings have sensible defaults and are optionally overridden via a TOML fil
 
 **No TUI framework.** The picker uses raw terminal mode directly via libc, same as cdm. This avoids a dependency on ratatui or similar and keeps the interaction model simple: print a numbered list, read a digit, done.
 
-**Visit tracking scoped to sf.** Unlike cdm which hooks into every `cd`, sf only records visits when a directory is selected through its own picker. This keeps the co-access graph focused on intentional navigation rather than incidental directory changes.
+**Visit tracking scoped to sf.** Unlike cdm which hooks into every `cd`, sf only records visits when a directory is selected through its own picker. This keeps the co-access graph focused on intentional navigation rather than incidental directory changes. However, integration with cdm's history is planned as an option (see future directions).
+
+**Multi-location with no primary.** A directory can exist on multiple drives. All copies are peers — there's no primary designation. `resolve_key` checks each registered location and uses the first accessible one. `sf audit` verifies presence and can detect drift once content hashing is implemented.
 
 ## Building
 
@@ -103,12 +113,22 @@ The GitHub Actions release workflow builds for Linux x86_64, macOS x86_64, and m
 
 ## Future directions
 
-**Backup audit.** `sf audit` would scan configured mount points, reconcile actual directory presence against the registry, and report: keys with fewer than two backup copies, strays on disk not in the registry, and keys in the registry missing from all known locations. The registry remembers locations even when drives aren't mounted; a content hash per location would detect stale copies.
+**Audit content hashing.** Currently audit only checks presence. Planned: three-tier approach.
+- `sf audit` — presence only, updates `last_seen` per location. Always fast.
+- `sf audit --quick` — quick hash per location (file count + total size + newest mtime). Detects definite drift.
+- `sf audit --deep` — full content hash (Merkle-style). Expensive, on demand.
+Requires expanding the `locations` table with `last_seen`, `quick_hash`, `quick_hash_date`, `deep_hash`, `deep_hash_date` columns.
 
-**Metadata editing.** `sf edit <key>` would open `.meta.json` in `$EDITOR` and trigger re-embedding if the content changed.
+**Topic modeling.** Clustering directories by embedding similarity to discover emergent groupings. Two complementary signals: semantic clustering (HDBSCAN over embedding vectors) and behavioral clustering (community detection over the NPMI co-access graph). Could surface as `sf topics`, or as search boosting within clusters, or as tag suggestions.
 
-**Topic modeling.** Clustering directories by embedding similarity to discover emergent groupings. This could surface implicit categories ("all my music projects", "all my NLP work") without requiring explicit tags. Possible approaches include k-means or HDBSCAN over the embedding vectors, or building a nearest-neighbor graph and running community detection. The challenge is choosing the right granularity — too few clusters and everything blurs together, too many and it's just a list of directories again.
+**Multi-resolution embeddings for topic modeling.** The primary embedding (purpose + README, truncated) is optimized for search. Additional documents listed in the `index` field could feed separate embeddings used only for clustering — a directory becomes a cloud of points in embedding space. Two directories whose primary embeddings are distant might share document-level embeddings that link them in topic space.
 
-**Hybrid search.** Combining semantic search with literal substring matching on the purpose field. This would catch cases where the embedding model doesn't recognize domain-specific terms (e.g. "Organteq") but the word appears verbatim in the metadata.
+**Co-access via cdm history.** Read `~/.cd_history` from cdm, filter to paths matching managed directories, normalize paths across drives to the same key, and feed into NPMI computation. Config option: `coaccess_source = "cdm" | "sf" | "both"`. Advantages: ~2 years of existing history; path normalization across mount points (sf knows that `~/contents/abc123` and `/Volumes/drive/contents/abc123` are the same key).
 
-**Shell integration for visit tracking.** Currently visits are only recorded when selecting through sf's picker. A deeper integration — hooking into `cd` like cdm does, but filtering to managed directories — would enrich the co-access graph with organic navigation patterns.
+**Variable co-access windows.** The current NPMI uses a fixed small window (default 3) for workflow neighbors. A larger window (50-100) would capture temporal co-occurrence — directories developed during the same period. Could be exposed as `sf coaccess <key> --wide`.
+
+**Hybrid search.** Combining semantic search with literal substring matching on the purpose field. Catches cases where the embedding model doesn't recognize domain-specific terms but the word appears verbatim in metadata.
+
+**Maturity/health scoring.** Automatically distinguish active projects from abandoned ones. Signals: doc completeness, file modification recency, git commit activity, co-access recency. Could surface in `sf info` or as a search filter (`sf search --active`).
+
+**Query caching.** Cache recent query embeddings in SQLite to avoid hitting ollama on repeated searches. Low priority — cold start is ~2 seconds (model reload), subsequent queries are fast.

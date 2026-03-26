@@ -136,6 +136,8 @@ default_author = "myersm0"
 embedding_model = "qwen3-embedding"
 max_embed_chars = 6000
 min_similarity = 0.5
+max_search_results = 15
+warn_no_docs = true
 coaccess_window = 3
 meta_filenames = [".meta.json", ".meta"]
 
