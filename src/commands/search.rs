@@ -1,6 +1,6 @@
 use crate::config::AppConfig;
 use crate::db::Database;
-use crate::embed::{self, OllamaClient};
+use crate::embed::{self, EmbeddingClient};
 use crate::picker::{self, PickerItem};
 
 struct ScoredResult {
@@ -13,6 +13,7 @@ struct ScoredResult {
 pub fn run(
 	db: &Database,
 	config: &AppConfig,
+	client: Option<&dyn EmbeddingClient>,
 	query: Option<String>,
 	tags: Option<Vec<String>>,
 	author: Option<String>,
@@ -31,7 +32,7 @@ pub fn run(
 
 	let results: Vec<ScoredResult> = match query {
 		Some(ref query_text) => {
-			let client = OllamaClient::new(&config.ollama_url, &config.embedding_model, config.max_embed_chars);
+			let client = client.expect("embedding client required for semantic search");
 			let query_embedding = client.embed(query_text)?;
 
 			let mut scored: Vec<ScoredResult> = Vec::new();

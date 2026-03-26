@@ -1,10 +1,30 @@
 use crate::config::AppConfig;
 use crate::db::Database;
-use crate::embed::{self, OllamaClient};
+use crate::embed::{self, EmbeddingClient};
 use crate::meta::DirMeta;
 
-pub fn run(db: &Database, config: &AppConfig, force: bool) -> Result<(), Box<dyn std::error::Error>> {
-	let client = OllamaClient::new(&config.ollama_url, &config.embedding_model, config.max_embed_chars);
+pub fn run(
+	db: &Database,
+	config: &AppConfig,
+	client: &dyn EmbeddingClient,
+	force: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
+	let stored_model = db.get_metadata("embedding_model")?;
+	let current_model = &config.embedding_model;
+	if let Some(ref prev) = stored_model {
+		if prev != current_model {
+			if !force {
+				eprintln!(
+					"embedding model changed ({} -> {}); run `sf sync --force` to re-embed all",
+					prev, current_model,
+				);
+				return Ok(());
+			}
+			let cleared = db.clear_embeddings()?;
+			eprintln!("model changed: cleared {} existing embeddings", cleared);
+		}
+	}
+
 	let rows = db.get_all_directories()?;
 
 	let mut updated = 0;
@@ -62,6 +82,10 @@ pub fn run(db: &Database, config: &AppConfig, force: bool) -> Result<(), Box<dyn
 				errors += 1;
 			}
 		}
+	}
+
+	if updated > 0 || stored_model.as_deref() != Some(current_model) {
+		db.set_metadata("embedding_model", current_model)?;
 	}
 
 	if !no_docs.is_empty() && !force && config.warn_no_docs {

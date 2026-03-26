@@ -2,11 +2,29 @@ use std::path::PathBuf;
 
 use serde::Deserialize;
 
+#[derive(Debug, Clone, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum EmbeddingBackend {
+	#[default]
+	Ollama,
+	#[serde(alias = "openai")]
+	OpenAi,
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+#[serde(default)]
+pub struct OpenAiConfig {
+	pub url: String,
+	pub oauth2_token_url: String,
+	pub oauth2_scope: String,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
 pub struct AppConfig {
 	pub contents_path: PathBuf,
 	pub db_path: PathBuf,
+	pub embedding_backend: EmbeddingBackend,
 	pub ollama_url: String,
 	pub embedding_model: String,
 	pub coaccess_window: usize,
@@ -17,6 +35,7 @@ pub struct AppConfig {
 	pub default_author: String,
 	pub meta_filenames: Vec<String>,
 	pub backup_locations: Vec<PathBuf>,
+	pub openai: OpenAiConfig,
 }
 
 impl Default for AppConfig {
@@ -27,6 +46,7 @@ impl Default for AppConfig {
 		Self {
 			contents_path: home.join("contents"),
 			db_path: data_dir.join("sf").join("sf.db"),
+			embedding_backend: EmbeddingBackend::default(),
 			ollama_url: "http://localhost:11434".to_string(),
 			embedding_model: "qwen3-embedding".to_string(),
 			coaccess_window: 3,
@@ -40,6 +60,7 @@ impl Default for AppConfig {
 				".meta".to_string(),
 			],
 			backup_locations: Vec::new(),
+			openai: OpenAiConfig::default(),
 		}
 	}
 }

@@ -40,6 +40,11 @@ impl Database {
 				id INTEGER PRIMARY KEY AUTOINCREMENT,
 				key TEXT NOT NULL,
 				FOREIGN KEY (key) REFERENCES directories(key)
+			);
+
+			CREATE TABLE IF NOT EXISTS metadata (
+				key TEXT PRIMARY KEY,
+				value TEXT NOT NULL
 			);"
 		)?;
 		Ok(())
@@ -285,6 +290,35 @@ impl Database {
 			|row| row.get(0),
 		)?;
 		Ok(count > 0)
+	}
+
+	pub fn get_metadata(&self, key: &str) -> Result<Option<String>, Box<dyn std::error::Error>> {
+		let mut statement = self.connection.prepare(
+			"SELECT value FROM metadata WHERE key = ?1"
+		)?;
+		let mut rows = statement.query_map(params![key], |row| {
+			row.get::<_, String>(0)
+		})?;
+		match rows.next() {
+			Some(row) => Ok(Some(row?)),
+			None => Ok(None),
+		}
+	}
+
+	pub fn set_metadata(&self, key: &str, value: &str) -> Result<(), Box<dyn std::error::Error>> {
+		self.connection.execute(
+			"INSERT OR REPLACE INTO metadata (key, value) VALUES (?1, ?2)",
+			params![key, value],
+		)?;
+		Ok(())
+	}
+
+	pub fn clear_embeddings(&self) -> Result<usize, Box<dyn std::error::Error>> {
+		let count = self.connection.execute(
+			"UPDATE directories SET embedding = NULL, content_hash = NULL WHERE embedding IS NOT NULL",
+			[],
+		)?;
+		Ok(count)
 	}
 }
 

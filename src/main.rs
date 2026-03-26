@@ -84,6 +84,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 	let config = AppConfig::load();
 	let db = Database::open(&config.db_path)?;
 	db.initialize()?;
+   eprintln!("config path: {:?}", AppConfig::config_path());
 
 	match cli.command {
 		Commands::New { purpose, author, tags, path } => {
@@ -93,7 +94,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 			commands::info::run(&db, &key)?;
 		}
 		Commands::Search { query, tags, author, since } => {
-			commands::search::run(&db, &config, query, tags, author, since)?;
+			let client = if query.is_some() {
+				Some(embed::build_client(&config)?)
+			} else {
+				None
+			};
+			commands::search::run(
+				&db, &config,
+				client.as_ref().map(|c| c.as_ref()),
+				query, tags, author, since,
+			)?;
 		}
 		Commands::Coaccess { key, number } => {
 			commands::coaccess::run(&db, &config, &key, number)?;
@@ -102,10 +112,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 			commands::audit::run(&db, &config, mount_path)?;
 		}
 		Commands::Sync { force } => {
-			commands::sync::run(&db, &config, force)?;
+			let client = embed::build_client(&config)?;
+			commands::sync::run(&db, &config, client.as_ref(), force)?;
 		}
 		Commands::Edit { key } => {
-			commands::edit::run(&db, &config, &key)?;
+			let client = embed::build_client(&config)?;
+			commands::edit::run(&db, &config, client.as_ref(), &key)?;
 		}
 		Commands::Import { key, path } => {
 			commands::import::run(&db, &config, &key, path)?;

@@ -2,12 +2,13 @@ use std::process::Command;
 
 use crate::config::AppConfig;
 use crate::db::Database;
-use crate::embed::{self, OllamaClient};
+use crate::embed::{self, EmbeddingClient};
 use crate::meta::DirMeta;
 
 pub fn run(
 	db: &Database,
 	config: &AppConfig,
+	client: &dyn EmbeddingClient,
 	key: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
 	if !db.key_exists(key)? {
@@ -49,7 +50,6 @@ pub fn run(
 
 	if stored_hash.as_deref() != Some(&hash) {
 		eprint!("  re-embedding...");
-		let client = OllamaClient::new(&config.ollama_url, &config.embedding_model, config.max_embed_chars);
 		let embedding = client.embed(&content.text)?;
 		let bytes = embed::embedding_to_bytes(&embedding);
 		db.set_embedding(key, &bytes, &hash, content.has_docs)?;
