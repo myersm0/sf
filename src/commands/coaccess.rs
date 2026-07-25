@@ -117,3 +117,54 @@ pub fn run(
 
 	Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	fn visits(keys: &[&str]) -> Vec<String> {
+		keys.iter().map(|key| key.to_string()).collect()
+	}
+
+	#[test]
+	fn short_history_yields_nothing() {
+		assert!(compute_npmi(&visits(&["a"]), "a", 3).is_empty());
+		assert!(compute_npmi(&visits(&["a", "b"]), "a", 1).is_empty());
+	}
+
+	#[test]
+	fn constant_companions_score_one() {
+		let edges = compute_npmi(&visits(&["a", "b", "a", "b"]), "a", 2);
+		assert_eq!(edges.len(), 1);
+		assert_eq!(edges[0].neighbor, "b");
+		assert!((edges[0].score - 1.0).abs() < 1e-9);
+	}
+
+	#[test]
+	fn independent_keys_are_excluded() {
+		let edges = compute_npmi(&visits(&["a", "b", "c", "d"]), "a", 2);
+		assert_eq!(edges.len(), 1);
+		assert_eq!(edges[0].neighbor, "b");
+		let expected = (1.5f64).ln() / (3.0f64).ln();
+		assert!((edges[0].score - expected).abs() < 1e-9);
+	}
+
+	#[test]
+	fn ubiquitous_target_has_no_informative_neighbors() {
+		let edges = compute_npmi(&visits(&["a", "b", "a", "b", "a", "c"]), "a", 2);
+		assert!(edges.is_empty());
+	}
+
+	#[test]
+	fn duplicates_within_a_window_count_once() {
+		let edges = compute_npmi(&visits(&["a", "a", "b"]), "a", 3);
+		assert_eq!(edges.len(), 1);
+		assert_eq!(edges[0].neighbor, "b");
+		assert!((edges[0].score - 1.0).abs() < 1e-9);
+	}
+
+	#[test]
+	fn absent_target_yields_nothing() {
+		assert!(compute_npmi(&visits(&["a", "b", "a", "b"]), "z", 2).is_empty());
+	}
+}

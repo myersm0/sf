@@ -91,3 +91,35 @@ pub fn bytes_to_embedding(bytes: &[u8]) -> Result<Vec<f32>, Box<dyn std::error::
 		})
 		.collect())
 }
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn truncate_under_limit_is_untouched() {
+		assert_eq!(truncate_text("hello", 10), "hello");
+	}
+
+	#[test]
+	fn truncate_cuts_at_limit() {
+		assert_eq!(truncate_text("hello world", 5), "hello");
+	}
+
+	#[test]
+	fn truncate_respects_char_boundaries() {
+		assert_eq!(truncate_text("a\u{e9}b", 2), "a");
+	}
+
+	#[test]
+	fn embedding_bytes_roundtrip() {
+		let embedding = vec![0.0f32, -1.5, 3.25];
+		let bytes = embedding_to_bytes(&embedding);
+		assert_eq!(bytes_to_embedding(&bytes).unwrap(), embedding);
+	}
+
+	#[test]
+	fn corrupt_blob_is_rejected() {
+		assert!(bytes_to_embedding(&[0, 0, 0]).is_err());
+	}
+}

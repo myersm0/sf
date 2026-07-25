@@ -41,3 +41,40 @@ pub fn elbow_cutoff(scores: &[f32], min_results: usize, max_results: usize) -> u
 
 	elbow_index.max(min_results)
 }
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn identical_vectors_score_one() {
+		let vector = vec![0.5, -1.0, 2.0];
+		assert!((cosine_similarity(&vector, &vector) - 1.0).abs() < 1e-6);
+	}
+
+	#[test]
+	fn orthogonal_vectors_score_zero() {
+		assert!(cosine_similarity(&[1.0, 0.0], &[0.0, 1.0]).abs() < 1e-6);
+	}
+
+	#[test]
+	fn opposite_vectors_score_negative_one() {
+		assert!((cosine_similarity(&[1.0, 2.0], &[-1.0, -2.0]) + 1.0).abs() < 1e-6);
+	}
+
+	#[test]
+	fn zero_vector_scores_zero() {
+		assert_eq!(cosine_similarity(&[0.0, 0.0], &[1.0, 2.0]), 0.0);
+	}
+
+	#[test]
+	fn mismatched_lengths_score_zero() {
+		assert_eq!(cosine_similarity(&[1.0, 2.0, 3.0], &[1.0, 2.0]), 0.0);
+	}
+
+	#[test]
+	fn elbow_finds_the_cliff() {
+		let scores = vec![0.9, 0.88, 0.86, 0.3, 0.28, 0.26];
+		assert_eq!(elbow_cutoff(&scores, 2, 6), 3);
+	}
+}

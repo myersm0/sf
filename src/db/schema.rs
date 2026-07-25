@@ -382,3 +382,125 @@ impl DirectoryRow {
 		serde_json::from_str(&self.tags_json).unwrap_or_default()
 	}
 }
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use rusqlite::Connection;
+
+	fn test_db() -> Database {
+		let connection = Connection::open_in_memory().unwrap();
+		connection.execute_batch("PRAGMA foreign_keys = ON;").unwrap();
+		let db = Database { connection };
+		db.initialize().unwrap();
+		db
+	}
+
+	#[test]
+	fn initialize_versions_and_is_idempotent() {
+		let db = test_db();
+		let version: i32 = db.connection
+			.query_row("PRAGMA user_version", [], |row| row.get(0))
+			.unwrap();
+		assert_eq!(version, current_schema_version);
+		db.initialize().unwrap();
+	}
+
+	#[test]
+	fn newer_schema_versions_are_rejected() {
+		let db = test_db();
+		db.connection.pragma_update(None, "user_version", 99).unwrap();
+		assert!(db.initialize().is_err());
+	}
+
+	#[test]
+	fn directory_roundtrip_with_tags() {
+		let db = test_db();
+		db.insert_directory("abc123", "2026-01-01", "purpose", "author", &["x".to_string(), "y".to_string()]).unwrap();
+		let row = db.get_directory("abc123").unwrap().unwrap();
+		assert_eq!(row.purpose, "purpose");
+		assert_eq!(row.tags(), vec!["x".to_string(), "y".to_string()]);
+		assert!(db.get_directory("zzz999").unwrap().is_none());
+	}
+
+	#[test]
+	fn search_filters_by_author_since_and_tags() {
+		let db = test_db();
+		db.insert_directory("aaa", "2025-01-01", "p", "alice", &["julia".to_string()]).unwrap();
+		db.insert_directory("bbb", "2026-01-01", "p", "bob", &["rust".to_string()]).unwrap();
+
+		let by_author = db.search_directories(Some("alice"), None, None).unwrap();
+		assert_eq!(by_author.len(), 1);
+		assert_eq!(by_author[0].key, "aaa");
+
+		let recent = db.search_directories(None, Some("2025-06-01"), None).unwrap();
+		assert_eq!(recent.len(), 1);
+		assert_eq!(recent[0].key, "bbb");
+
+		let tagged = db.search_directories(None, None, Some(&["rust".to_string()])).unwrap();
+		assert_eq!(tagged.len(), 1);
+		assert_eq!(tagged[0].key, "bbb");
+	}
+
+	#[test]
+	fn foreign_keys_are_enforced() {
+		let db = test_db();
+		assert!(db.record_visit("nonexistent").is_err());
+		db.insert_directory("abc123", "2026-01-01", "p", "a", &[]).unwrap();
+		assert!(db.record_visit("abc123").is_ok());
+	}
+
+	#[test]
+	fn visits_carry_utc_timestamps() {
+		let db = test_db();
+		db.insert_directory("abc123", "2026-01-01", "p", "a", &[]).unwrap();
+		db.record_visit("abc123").unwrap();
+		let visited_at: String = db.connection
+			.query_row("SELECT visited_at FROM visits", [], |row| row.get(0))
+			.unwrap();
+		assert!(visited_at.contains('T'));
+		assert!(visited_at.ends_with('Z'));
+	}
+
+	#[test]
+	fn embedding_state_currency_rules() {
+		let db = test_db();
+		db.insert_directory("abc123", "2026-01-01", "p", "a", &[]).unwrap();
+		db.set_embedding("abc123", &[0u8; 8], "model-one", "hash-one", true).unwrap();
+
+		let state = db.get_embedding_state("abc123").unwrap();
+		assert!(state.is_current("hash-one", "model-one"));
+		assert!(!state.is_current("hash-two", "model-one"));
+		assert!(!state.is_current("hash-one", "model-two"));
+
+		db.connection.execute("UPDATE directories SET embedding_model = NULL", []).unwrap();
+		let legacy = db.get_embedding_state("abc123").unwrap();
+		assert!(legacy.is_current("hash-one", "any-model"));
+		assert!(!legacy.is_current("hash-two", "any-model"));
+	}
+
+	#[test]
+	fn stored_embedding_carries_model() {
+		let db = test_db();
+		db.insert_directory("abc123", "2026-01-01", "p", "a", &[]).unwrap();
+		assert!(db.get_embedding("abc123").unwrap().is_none());
+		db.set_embedding("abc123", &[1, 2, 3, 4], "m", "h", true).unwrap();
+		let stored = db.get_embedding("abc123").unwrap().unwrap();
+		assert_eq!(stored.bytes, vec![1, 2, 3, 4]);
+		assert_eq!(stored.model.as_deref(), Some("m"));
+	}
+
+	#[test]
+	fn resolve_key_finds_a_reachable_location() {
+		let db = test_db();
+		db.insert_directory("abc123", "2026-01-01", "p", "a", &[]).unwrap();
+		let base = std::env::temp_dir().join(format!("sf_resolve_test_{}", std::process::id()));
+		let mounted = base.join("mounted");
+		std::fs::create_dir_all(mounted.join("abc123")).unwrap();
+		db.add_location("abc123", base.join("absent").to_str().unwrap()).unwrap();
+		db.add_location("abc123", mounted.to_str().unwrap()).unwrap();
+		let resolved = db.resolve_key("abc123").unwrap().unwrap();
+		assert_eq!(resolved, mounted.join("abc123"));
+		std::fs::remove_dir_all(&base).unwrap();
+	}
+}
