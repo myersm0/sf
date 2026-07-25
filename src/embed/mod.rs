@@ -18,13 +18,7 @@ pub fn build_client(config: &AppConfig) -> Result<Box<dyn EmbeddingClient>, Box<
 			Ok(Box::new(ollama::OllamaClient::from_config(config)))
 		}
 		EmbeddingBackend::OpenAi => {
-			Ok(Box::new(openai::OpenAiClient::new(
-				&config.openai.url,
-				&config.embedding_model,
-				config.max_embed_chars,
-				&config.openai.oauth2_token_url,
-				&config.openai.oauth2_scope,
-			)?))
+			Ok(Box::new(openai::OpenAiClient::from_config(config)?))
 		}
 	}
 }

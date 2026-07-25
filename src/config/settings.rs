@@ -11,12 +11,24 @@ pub enum EmbeddingBackend {
 	OpenAi,
 }
 
-#[derive(Debug, Clone, Deserialize, Default)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
 pub struct OpenAiConfig {
 	pub url: String,
 	pub oauth2_token_url: String,
 	pub oauth2_scope: String,
+	pub timeout_seconds: u64,
+}
+
+impl Default for OpenAiConfig {
+	fn default() -> Self {
+		Self {
+			url: String::new(),
+			oauth2_token_url: String::new(),
+			oauth2_scope: String::new(),
+			timeout_seconds: 120,
+		}
+	}
 }
 
 #[derive(Debug, Clone, Deserialize)]
