@@ -49,7 +49,7 @@ pub fn run(
 
 	if !state.is_current(&hash, &config.embedding_model) {
 		eprint!("  re-embedding...");
-		let client = OllamaClient::new(&config.ollama_url, &config.embedding_model, config.max_embed_chars);
+		let client = OllamaClient::from_config(config);
 		let embedding = client.embed(&content.text)?;
 		let bytes = embed::embedding_to_bytes(&embedding);
 		db.set_embedding(key, &bytes, &config.embedding_model, &hash, content.has_docs)?;

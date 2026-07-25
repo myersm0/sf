@@ -31,7 +31,7 @@ pub fn run(
 
 	let results: Vec<ScoredResult> = match query {
 		Some(ref query_text) => {
-			let client = OllamaClient::new(&config.ollama_url, &config.embedding_model, config.max_embed_chars);
+			let client = OllamaClient::from_config(config);
 			let query_embedding = client.embed(query_text)?;
 
 			let mut scored: Vec<ScoredResult> = Vec::new();

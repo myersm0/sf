@@ -4,7 +4,7 @@ use crate::embed::{self, OllamaClient};
 use crate::meta::DirMeta;
 
 pub fn run(db: &Database, config: &AppConfig, force: bool) -> Result<(), Box<dyn std::error::Error>> {
-	let client = OllamaClient::new(&config.ollama_url, &config.embedding_model, config.max_embed_chars);
+	let client = OllamaClient::from_config(config);
 	let rows = db.get_all_directories()?;
 
 	let mut updated = 0;
