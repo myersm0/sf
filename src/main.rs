@@ -81,7 +81,7 @@ enum Commands {
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
 	let cli = Cli::parse();
-	let config = AppConfig::load();
+	let config = AppConfig::load()?;
 	let db = Database::open(&config.db_path)?;
 	db.initialize()?;
 
