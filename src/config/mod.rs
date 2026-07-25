@@ -1,3 +1,3 @@
 mod settings;
 
-pub use settings::AppConfig;
+pub use settings::{AppConfig, expand_tilde};

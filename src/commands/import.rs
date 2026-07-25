@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use crate::config::AppConfig;
+use crate::config::{AppConfig, expand_tilde};
 use crate::db::Database;
 use crate::meta::DirMeta;
 
@@ -10,7 +10,10 @@ pub fn run(
 	key: &str,
 	path: Option<PathBuf>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-	let root = path.unwrap_or_else(|| config.contents_path.clone());
+	let root = expand_tilde(&path.unwrap_or_else(|| config.contents_path.clone()));
+	let root = std::fs::canonicalize(&root).map_err(|error| {
+		format!("cannot resolve root {}: {}", root.display(), error)
+	})?;
 	let dir_path = root.join(key);
 	if !dir_path.exists() {
 		return Err(format!("directory not found: {}", dir_path.display()).into());

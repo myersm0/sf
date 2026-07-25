@@ -80,8 +80,9 @@ pub fn run(
 			skipped_roots.push(root.clone());
 			continue;
 		}
+		let root = std::fs::canonicalize(root).unwrap_or_else(|_| root.clone());
 		scanned_roots.push(root.clone());
-		let keys_on_disk = scan_hex_dirs(root);
+		let keys_on_disk = scan_hex_dirs(&root);
 		for key in keys_on_disk {
 			disk_presence.entry(key).or_default().push(root.clone());
 		}

@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use chrono::Local;
 use rand::Rng;
 
-use crate::config::AppConfig;
+use crate::config::{AppConfig, expand_tilde};
 use crate::db::Database;
 use crate::meta::DirMeta;
 
@@ -41,7 +41,9 @@ pub fn run(
 	tags: Option<Vec<String>>,
 	path: Option<PathBuf>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-	let root = path.unwrap_or_else(|| config.contents_path.clone());
+	let root = expand_tilde(&path.unwrap_or_else(|| config.contents_path.clone()));
+	std::fs::create_dir_all(&root)?;
+	let root = std::fs::canonicalize(&root)?;
 	let key = generate_unique_key(db, &root)?;
 	let created = Local::now().format("%Y-%m-%d").to_string();
 
