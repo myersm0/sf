@@ -43,8 +43,8 @@ pub fn run(db: &Database, config: &AppConfig, force: bool) -> Result<(), Box<dyn
 			}
 		}
 
-		let stored_hash = db.get_content_hash(&row.key)?;
-		if stored_hash.as_deref() == Some(&hash) {
+		let state = db.get_embedding_state(&row.key)?;
+		if state.is_current(&hash, &config.embedding_model) {
 			skipped += 1;
 			continue;
 		}
@@ -53,7 +53,7 @@ pub fn run(db: &Database, config: &AppConfig, force: bool) -> Result<(), Box<dyn
 		match client.embed(&content.text) {
 			Ok(embedding) => {
 				let bytes = embed::embedding_to_bytes(&embedding);
-				db.set_embedding(&row.key, &bytes, &hash, content.has_docs)?;
+				db.set_embedding(&row.key, &bytes, &config.embedding_model, &hash, content.has_docs)?;
 				eprintln!(" ok");
 				updated += 1;
 			}

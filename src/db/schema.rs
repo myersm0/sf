@@ -5,7 +5,7 @@ use rusqlite::{Connection, params};
 use serde_json;
 
 #[allow(non_upper_case_globals)]
-const current_schema_version: i32 = 1;
+const current_schema_version: i32 = 2;
 
 pub struct Database {
 	connection: Connection,
@@ -33,6 +33,9 @@ impl Database {
 		}
 		if version < 1 {
 			self.migrate_to_version_1()?;
+		}
+		if version < 2 {
+			self.migrate_to_version_2()?;
 		}
 		Ok(())
 	}
@@ -67,6 +70,14 @@ impl Database {
 			self.connection.execute("ALTER TABLE visits ADD COLUMN visited_at TEXT", [])?;
 		}
 		self.connection.pragma_update(None, "user_version", 1)?;
+		Ok(())
+	}
+
+	fn migrate_to_version_2(&self) -> Result<(), Box<dyn std::error::Error>> {
+		if !self.column_exists("directories", "embedding_model")? {
+			self.connection.execute("ALTER TABLE directories ADD COLUMN embedding_model TEXT", [])?;
+		}
+		self.connection.pragma_update(None, "user_version", 2)?;
 		Ok(())
 	}
 
@@ -239,15 +250,21 @@ impl Database {
 		self.search_directories(None, None, None)
 	}
 
-	pub fn get_embedding(&self, key: &str) -> Result<Option<Vec<u8>>, Box<dyn std::error::Error>> {
+	pub fn get_embedding(&self, key: &str) -> Result<Option<StoredEmbedding>, Box<dyn std::error::Error>> {
 		let mut statement = self.connection.prepare(
-			"SELECT embedding FROM directories WHERE key = ?1"
+			"SELECT embedding, embedding_model FROM directories WHERE key = ?1"
 		)?;
 		let mut rows = statement.query_map(params![key], |row| {
-			row.get::<_, Option<Vec<u8>>>(0)
+			Ok((
+				row.get::<_, Option<Vec<u8>>>(0)?,
+				row.get::<_, Option<String>>(1)?,
+			))
 		})?;
 		match rows.next() {
-			Some(row) => Ok(row?),
+			Some(row) => {
+				let (bytes, model) = row?;
+				Ok(bytes.map(|bytes| StoredEmbedding { bytes, model }))
+			}
 			None => Ok(None),
 		}
 	}
@@ -256,26 +273,30 @@ impl Database {
 		&self,
 		key: &str,
 		embedding: &[u8],
+		model: &str,
 		content_hash: &str,
 		has_docs: bool,
 	) -> Result<(), Box<dyn std::error::Error>> {
 		self.connection.execute(
-			"UPDATE directories SET embedding = ?1, content_hash = ?2, has_docs = ?3 WHERE key = ?4",
-			params![embedding, content_hash, has_docs as i32, key],
+			"UPDATE directories SET embedding = ?1, embedding_model = ?2, content_hash = ?3, has_docs = ?4 WHERE key = ?5",
+			params![embedding, model, content_hash, has_docs as i32, key],
 		)?;
 		Ok(())
 	}
 
-	pub fn get_content_hash(&self, key: &str) -> Result<Option<String>, Box<dyn std::error::Error>> {
+	pub fn get_embedding_state(&self, key: &str) -> Result<EmbeddingState, Box<dyn std::error::Error>> {
 		let mut statement = self.connection.prepare(
-			"SELECT content_hash FROM directories WHERE key = ?1"
+			"SELECT content_hash, embedding_model FROM directories WHERE key = ?1"
 		)?;
 		let mut rows = statement.query_map(params![key], |row| {
-			row.get::<_, Option<String>>(0)
+			Ok(EmbeddingState {
+				content_hash: row.get(0)?,
+				model: row.get(1)?,
+			})
 		})?;
 		match rows.next() {
 			Some(row) => Ok(row?),
-			None => Ok(None),
+			None => Ok(EmbeddingState { content_hash: None, model: None }),
 		}
 	}
 
@@ -318,6 +339,24 @@ impl Database {
 			|row| row.get(0),
 		)?;
 		Ok(count > 0)
+	}
+}
+
+pub struct StoredEmbedding {
+	pub bytes: Vec<u8>,
+	pub model: Option<String>,
+}
+
+pub struct EmbeddingState {
+	pub content_hash: Option<String>,
+	pub model: Option<String>,
+}
+
+impl EmbeddingState {
+	pub fn is_current(&self, content_hash: &str, configured_model: &str) -> bool {
+		let hash_matches = self.content_hash.as_deref() == Some(content_hash);
+		let model_matches = self.model.as_deref().map_or(true, |model| model == configured_model);
+		hash_matches && model_matches
 	}
 }
 

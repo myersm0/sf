@@ -45,14 +45,14 @@ pub fn run(
 
 	let content = embed::gather_text(&dir_path, &meta);
 	let hash = embed::compute_content_hash(&content.text);
-	let stored_hash = db.get_content_hash(key)?;
+	let state = db.get_embedding_state(key)?;
 
-	if stored_hash.as_deref() != Some(&hash) {
+	if !state.is_current(&hash, &config.embedding_model) {
 		eprint!("  re-embedding...");
 		let client = OllamaClient::new(&config.ollama_url, &config.embedding_model, config.max_embed_chars);
 		let embedding = client.embed(&content.text)?;
 		let bytes = embed::embedding_to_bytes(&embedding);
-		db.set_embedding(key, &bytes, &hash, content.has_docs)?;
+		db.set_embedding(key, &bytes, &config.embedding_model, &hash, content.has_docs)?;
 		eprintln!(" ok");
 	}
 

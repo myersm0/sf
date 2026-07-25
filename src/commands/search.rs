@@ -35,16 +35,23 @@ pub fn run(
 			let query_embedding = client.embed(query_text)?;
 
 			let mut scored: Vec<ScoredResult> = Vec::new();
-			let mut skipped = 0;
+			let mut missing = 0;
+			let mut mismatched = 0;
 			for row in &candidates {
-				let embedding_bytes = match db.get_embedding(&row.key)? {
-					Some(bytes) => bytes,
+				let stored = match db.get_embedding(&row.key)? {
+					Some(stored) => stored,
 					None => {
-						skipped += 1;
+						missing += 1;
 						continue;
 					}
 				};
-				let stored_embedding = embed::bytes_to_embedding(&embedding_bytes);
+				if let Some(model) = &stored.model {
+					if model != &config.embedding_model {
+						mismatched += 1;
+						continue;
+					}
+				}
+				let stored_embedding = embed::bytes_to_embedding(&stored.bytes);
 				let score = embed::cosine_similarity(&query_embedding, &stored_embedding);
 				scored.push(ScoredResult {
 					key: row.key.clone(),
@@ -54,11 +61,19 @@ pub fn run(
 				});
 			}
 
-			if skipped > 0 {
+			if missing > 0 {
 				eprintln!(
 					"  ({} director{} skipped: no embedding; run `sf sync`)",
-					skipped,
-					if skipped == 1 { "y" } else { "ies" },
+					missing,
+					if missing == 1 { "y" } else { "ies" },
+				);
+			}
+			if mismatched > 0 {
+				eprintln!(
+					"  ({} director{} skipped: embedded with a different model than `{}`; run `sf sync`)",
+					mismatched,
+					if mismatched == 1 { "y" } else { "ies" },
+					config.embedding_model,
 				);
 			}
 
