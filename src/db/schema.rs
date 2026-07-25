@@ -1,7 +1,11 @@
 use std::path::Path;
 
+use chrono::{SecondsFormat, Utc};
 use rusqlite::{Connection, params};
 use serde_json;
+
+#[allow(non_upper_case_globals)]
+const current_schema_version: i32 = 1;
 
 pub struct Database {
 	connection: Connection,
@@ -13,10 +17,27 @@ impl Database {
 			std::fs::create_dir_all(parent)?;
 		}
 		let connection = Connection::open(path)?;
+		connection.execute_batch("PRAGMA foreign_keys = ON;")?;
 		Ok(Self { connection })
 	}
 
 	pub fn initialize(&self) -> Result<(), Box<dyn std::error::Error>> {
+		let version: i32 = self.connection.query_row(
+			"PRAGMA user_version", [], |row| row.get(0),
+		)?;
+		if version > current_schema_version {
+			return Err(format!(
+				"database schema version {} is newer than this build of sf supports ({}); upgrade sf",
+				version, current_schema_version,
+			).into());
+		}
+		if version < 1 {
+			self.migrate_to_version_1()?;
+		}
+		Ok(())
+	}
+
+	fn migrate_to_version_1(&self) -> Result<(), Box<dyn std::error::Error>> {
 		self.connection.execute_batch(
 			"CREATE TABLE IF NOT EXISTS directories (
 				key TEXT PRIMARY KEY,
@@ -42,7 +63,18 @@ impl Database {
 				FOREIGN KEY (key) REFERENCES directories(key)
 			);"
 		)?;
+		if !self.column_exists("visits", "visited_at")? {
+			self.connection.execute("ALTER TABLE visits ADD COLUMN visited_at TEXT", [])?;
+		}
+		self.connection.pragma_update(None, "user_version", 1)?;
 		Ok(())
+	}
+
+	fn column_exists(&self, table: &str, column: &str) -> Result<bool, Box<dyn std::error::Error>> {
+		let mut statement = self.connection.prepare(&format!("PRAGMA table_info({})", table))?;
+		let names = statement.query_map([], |row| row.get::<_, String>(1))?
+			.collect::<Result<Vec<_>, _>>()?;
+		Ok(names.iter().any(|name| name == column))
 	}
 
 	pub fn insert_directory(
@@ -89,9 +121,10 @@ impl Database {
 	}
 
 	pub fn record_visit(&self, key: &str) -> Result<(), Box<dyn std::error::Error>> {
+		let visited_at = Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true);
 		self.connection.execute(
-			"INSERT INTO visits (key) VALUES (?1)",
-			params![key],
+			"INSERT INTO visits (key, visited_at) VALUES (?1, ?2)",
+			params![key, visited_at],
 		)?;
 		Ok(())
 	}
