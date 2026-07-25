@@ -135,7 +135,7 @@ Two backends are supported, selected by `embedding_backend` in the config.
 
 **ollama** (the default) talks to a local ollama server at `ollama_url`. Requests are bounded by `ollama_timeout_seconds` so a wedged server can't hang sf indefinitely.
 
-**openai** talks to an OpenAI-compatible embeddings endpoint authenticated via OAuth2 client credentials — the shape corporate API gateways typically require, and the reason this backend exists (for machines where running ollama isn't approved). Configure it like so:
+**openai** talks to an OpenAI-compatible embeddings endpoint, with the same connect and overall timeout treatment (its own `timeout_seconds`, default 120, covering both the token fetch and the embedding request). It authenticates via OAuth2 client credentials — the shape corporate API gateways typically require, and the reason this backend exists (for machines where running ollama isn't approved). Configure it like so:
 
 ```toml
 embedding_backend = "openai"
@@ -145,6 +145,7 @@ embedding_model = "text-embedding-3-small"
 url = "https://your-gateway.example.com/v1/embeddings"
 oauth2_token_url = "https://login.example.com/oauth2/v2.0/token"
 oauth2_scope = "api://your-app/.default"
+timeout_seconds = 120
 ```
 
 The OAuth2 client id and secret are read from the `SF_OAUTH2_CLIENT_ID` and `SF_OAUTH2_CLIENT_SECRET` environment variables, never from the config file. Tokens are cached in memory and refreshed shortly before expiry.
