@@ -1,4 +1,9 @@
+use std::time::Duration;
+
 use serde::{Deserialize, Serialize};
+use ureq::{Agent, AgentBuilder};
+
+use crate::config::AppConfig;
 
 use super::{EmbeddingClient, truncate_text};
 
@@ -14,17 +19,23 @@ struct EmbedResponse {
 }
 
 pub struct OllamaClient {
+	agent: Agent,
 	base_url: String,
 	model: String,
 	max_chars: usize,
 }
 
 impl OllamaClient {
-	pub fn new(base_url: &str, model: &str, max_chars: usize) -> Self {
+	pub fn from_config(config: &AppConfig) -> Self {
+		let agent = AgentBuilder::new()
+			.timeout_connect(Duration::from_secs(5))
+			.timeout(Duration::from_secs(config.ollama_timeout_seconds))
+			.build();
 		Self {
-			base_url: base_url.trim_end_matches('/').to_string(),
-			model: model.to_string(),
-			max_chars,
+			agent,
+			base_url: config.ollama_url.trim_end_matches('/').to_string(),
+			model: config.embedding_model.clone(),
+			max_chars: config.max_embed_chars,
 		}
 	}
 }
@@ -37,7 +48,7 @@ impl EmbeddingClient for OllamaClient {
 			model: &self.model,
 			input: truncated,
 		};
-		let result = ureq::post(&url)
+		let result = self.agent.post(&url)
 			.send_json(serde_json::to_value(&request)?);
 		match result {
 			Ok(response) => {
@@ -49,7 +60,7 @@ impl EmbeddingClient for OllamaClient {
 				let body = response.into_string().unwrap_or_default();
 				Err(format!("ollama returned {}: {}", code, body).into())
 			}
-			Err(e) => Err(e.into()),
+			Err(error) => Err(format!("ollama request to {} failed: {}", url, error).into()),
 		}
 	}
 }

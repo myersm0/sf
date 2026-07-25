@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 
@@ -26,6 +26,7 @@ pub struct AppConfig {
 	pub db_path: PathBuf,
 	pub embedding_backend: EmbeddingBackend,
 	pub ollama_url: String,
+	pub ollama_timeout_seconds: u64,
 	pub embedding_model: String,
 	pub coaccess_window: usize,
 	pub max_embed_chars: usize,
@@ -48,6 +49,7 @@ impl Default for AppConfig {
 			db_path: data_dir.join("sf").join("sf.db"),
 			embedding_backend: EmbeddingBackend::default(),
 			ollama_url: "http://localhost:11434".to_string(),
+			ollama_timeout_seconds: 120,
 			embedding_model: "qwen3-embedding".to_string(),
 			coaccess_window: 3,
 			max_embed_chars: 6000,
@@ -65,6 +67,22 @@ impl Default for AppConfig {
 	}
 }
 
+pub fn expand_tilde(path: &Path) -> PathBuf {
+	let Some(text) = path.to_str() else {
+		return path.to_path_buf();
+	};
+	let Some(home) = dirs::home_dir() else {
+		return path.to_path_buf();
+	};
+	if text == "~" {
+		return home;
+	}
+	if let Some(rest) = text.strip_prefix("~/") {
+		return home.join(rest);
+	}
+	path.to_path_buf()
+}
+
 impl AppConfig {
 	pub fn config_path() -> PathBuf {
 		dirs::config_dir()
@@ -73,12 +91,25 @@ impl AppConfig {
 			.join("config.toml")
 	}
 
-	pub fn load() -> Self {
+	pub fn load() -> Result<Self, Box<dyn std::error::Error>> {
 		let path = Self::config_path();
-		if let Ok(contents) = std::fs::read_to_string(&path) {
-			toml::from_str(&contents).unwrap_or_default()
-		} else {
-			Self::default()
+		let mut config = match std::fs::read_to_string(&path) {
+			Ok(contents) => toml::from_str::<Self>(&contents).map_err(|error| {
+				format!("failed to parse {}: {}", path.display(), error)
+			})?,
+			Err(error) if error.kind() == std::io::ErrorKind::NotFound => Self::default(),
+			Err(error) => {
+				return Err(format!("failed to read {}: {}", path.display(), error).into());
+			}
+		};
+		config.contents_path = expand_tilde(&config.contents_path);
+		config.db_path = expand_tilde(&config.db_path);
+		config.backup_locations = config.backup_locations.iter()
+			.map(|location| expand_tilde(location))
+			.collect();
+		if config.meta_filenames.is_empty() {
+			return Err("meta_filenames must contain at least one filename".into());
 		}
+		Ok(config)
 	}
 }

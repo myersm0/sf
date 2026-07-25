@@ -9,22 +9,6 @@ pub fn run(
 	client: &dyn EmbeddingClient,
 	force: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
-	let stored_model = db.get_metadata("embedding_model")?;
-	let current_model = &config.embedding_model;
-	if let Some(ref prev) = stored_model {
-		if prev != current_model {
-			if !force {
-				eprintln!(
-					"embedding model changed ({} -> {}); run `sf sync --force` to re-embed all",
-					prev, current_model,
-				);
-				return Ok(());
-			}
-			let cleared = db.clear_embeddings()?;
-			eprintln!("model changed: cleared {} existing embeddings", cleared);
-		}
-	}
-
 	let rows = db.get_all_directories()?;
 
 	let mut updated = 0;
@@ -56,6 +40,9 @@ pub fn run(
 
 		if !content.has_docs {
 			no_docs.push(row.key.clone());
+			if row.has_docs {
+				db.set_has_docs(&row.key, false)?;
+			}
 			if !force && config.warn_no_docs {
 				eprintln!("  skip {}: no docs (use --force to embed anyway)", row.key);
 				skipped += 1;
@@ -63,8 +50,8 @@ pub fn run(
 			}
 		}
 
-		let stored_hash = db.get_content_hash(&row.key)?;
-		if stored_hash.as_deref() == Some(&hash) {
+		let state = db.get_embedding_state(&row.key)?;
+		if state.is_current(&hash, &config.embedding_model) {
 			skipped += 1;
 			continue;
 		}
@@ -73,7 +60,7 @@ pub fn run(
 		match client.embed(&content.text) {
 			Ok(embedding) => {
 				let bytes = embed::embedding_to_bytes(&embedding);
-				db.set_embedding(&row.key, &bytes, &hash, content.has_docs)?;
+				db.set_embedding(&row.key, &bytes, &config.embedding_model, &hash, content.has_docs)?;
 				eprintln!(" ok");
 				updated += 1;
 			}
@@ -82,10 +69,6 @@ pub fn run(
 				errors += 1;
 			}
 		}
-	}
-
-	if updated > 0 || stored_model.as_deref() != Some(current_model) {
-		db.set_metadata("embedding_model", current_model)?;
 	}
 
 	if !no_docs.is_empty() && !force && config.warn_no_docs {

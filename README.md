@@ -134,8 +134,11 @@ Optional. Create a `config.toml` at the platform-appropriate config path:
 contents_path = "~/contents"
 default_author = "myersm0"
 embedding_model = "qwen3-embedding"
+ollama_timeout_seconds = 120
 max_embed_chars = 6000
 min_similarity = 0.5
+max_search_results = 15
+warn_no_docs = true
 coaccess_window = 3
 meta_filenames = [".meta.json", ".meta"]
 
@@ -148,6 +151,8 @@ backup_locations = [
 `meta_filenames` controls which filenames are recognized as metadata files, tried in order. The default is `[".meta.json", ".meta"]`.
 
 `max_embed_chars` controls how much text is sent to ollama for embedding. Content beyond this limit is truncated. The right value depends on your embedding model's context window. The default of 6000 works well with `qwen3-embedding`; if using `nomic-embed-text`, try 2000.
+
+`ollama_timeout_seconds` bounds how long sf waits for an ollama response before giving up (default 120, generous enough for cold model loads on slow hardware).
 
 `min_similarity` sets a floor for semantic search results. Anything below this cosine similarity score is dropped before results are shown. The default of 0.5 is a reasonable starting point; tune it based on your experience with the embedding model.
 

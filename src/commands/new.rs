@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use chrono::Local;
 use rand::Rng;
 
-use crate::config::AppConfig;
+use crate::config::{AppConfig, expand_tilde};
 use crate::db::Database;
 use crate::meta::DirMeta;
 
@@ -41,7 +41,9 @@ pub fn run(
 	tags: Option<Vec<String>>,
 	path: Option<PathBuf>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-	let root = path.unwrap_or_else(|| config.contents_path.clone());
+	let root = expand_tilde(&path.unwrap_or_else(|| config.contents_path.clone()));
+	std::fs::create_dir_all(&root)?;
+	let root = std::fs::canonicalize(&root)?;
 	let key = generate_unique_key(db, &root)?;
 	let created = Local::now().format("%Y-%m-%d").to_string();
 
@@ -56,26 +58,23 @@ pub fn run(
 		}
 	};
 
-	let author = author
-		.or_else(|| {
-			if !config.default_author.is_empty() {
-				Some(config.default_author.clone())
-			} else {
-				None
-			}
-		})
-		.unwrap_or_else(|| {
-			prompt("author").unwrap_or_default()
-		});
+	let author = match author {
+		Some(author) => author,
+		None if !config.default_author.is_empty() => config.default_author.clone(),
+		None => prompt("author")?,
+	};
 
-	let tags = tags.unwrap_or_else(|| {
-		let input = prompt("tags (comma-separated)").unwrap_or_default();
-		if input.is_empty() {
-			Vec::new()
-		} else {
-			input.split(',').map(|s| s.trim().to_string()).collect()
+	let tags = match tags {
+		Some(tags) => tags,
+		None => {
+			let input = prompt("tags (comma-separated)")?;
+			if input.is_empty() {
+				Vec::new()
+			} else {
+				input.split(',').map(|s| s.trim().to_string()).collect()
+			}
 		}
-	});
+	};
 
 	let dir_path = root.join(&key);
 	std::fs::create_dir_all(&dir_path)?;
@@ -86,6 +85,7 @@ pub fn run(
 		author: author.clone(),
 		tags: tags.clone(),
 		index: Vec::new(),
+		extra: serde_json::Map::new(),
 	};
 	meta.save(&dir_path, &config.meta_filenames)?;
 

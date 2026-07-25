@@ -25,6 +25,31 @@ fn scan_hex_dirs(root: &Path) -> Vec<String> {
 	keys
 }
 
+struct LocationPresence {
+	present_mounts: Vec<String>,
+	missing_mounts: Vec<String>,
+	unmounted_mounts: Vec<String>,
+}
+
+fn assess_presence(key: &str, mounts: &[String]) -> LocationPresence {
+	let mut presence = LocationPresence {
+		present_mounts: Vec::new(),
+		missing_mounts: Vec::new(),
+		unmounted_mounts: Vec::new(),
+	};
+	for mount in mounts {
+		let root = Path::new(mount.as_str());
+		if !root.exists() {
+			presence.unmounted_mounts.push(mount.clone());
+		} else if root.join(key).exists() {
+			presence.present_mounts.push(mount.clone());
+		} else {
+			presence.missing_mounts.push(mount.clone());
+		}
+	}
+	presence
+}
+
 pub fn run(
 	db: &Database,
 	config: &AppConfig,
@@ -55,8 +80,9 @@ pub fn run(
 			skipped_roots.push(root.clone());
 			continue;
 		}
+		let root = std::fs::canonicalize(root).unwrap_or_else(|_| root.clone());
 		scanned_roots.push(root.clone());
-		let keys_on_disk = scan_hex_dirs(root);
+		let keys_on_disk = scan_hex_dirs(&root);
 		for key in keys_on_disk {
 			disk_presence.entry(key).or_default().push(root.clone());
 		}
@@ -94,24 +120,32 @@ pub fn run(
 	}
 
 	let mut lost: Vec<String> = Vec::new();
+	let mut unreachable: Vec<(String, LocationPresence)> = Vec::new();
+	let mut missing_copies: Vec<(String, Vec<String>)> = Vec::new();
 	let mut underprotected: Vec<(String, usize)> = Vec::new();
 	for key in &registered_keys {
 		let registered_locations = locations_per_key.get(key).cloned().unwrap_or_default();
-		let accessible_count = registered_locations.iter()
-			.filter(|mount| {
-				let dir = Path::new(mount.as_str()).join(key);
-				dir.exists()
-			})
-			.count();
-
 		let total_known = registered_locations.len();
-		if accessible_count == 0 && total_known == 0 {
+		if total_known == 0 {
 			lost.push(key.clone());
-		} else if total_known < 2 {
+			continue;
+		}
+
+		let presence = assess_presence(key, &registered_locations);
+		if presence.present_mounts.is_empty() {
+			unreachable.push((key.clone(), presence));
+		} else if !presence.missing_mounts.is_empty() {
+			missing_copies.push((key.clone(), presence.missing_mounts.clone()));
+		}
+
+		if total_known < 2 {
 			underprotected.push((key.clone(), total_known));
 		}
 	}
 
+	lost.sort();
+	unreachable.sort_by(|a, b| a.0.cmp(&b.0));
+	missing_copies.sort_by(|a, b| a.0.cmp(&b.0));
 	underprotected.sort_by(|a, b| a.1.cmp(&b.1).then(a.0.cmp(&b.0)));
 
 	let mut found_issues = false;
@@ -124,6 +158,36 @@ pub fn run(
 				.map(|r| r.purpose)
 				.unwrap_or_default();
 			eprintln!("    {}: {}", key, purpose);
+		}
+		eprintln!();
+	}
+
+	if !unreachable.is_empty() {
+		found_issues = true;
+		eprintln!("  unreachable (0 of registered locations reachable right now):");
+		for (key, presence) in &unreachable {
+			let purpose = db.get_directory(key)?
+				.map(|r| r.purpose)
+				.unwrap_or_default();
+			let mut states = Vec::new();
+			if !presence.unmounted_mounts.is_empty() {
+				states.push(format!("{} unmounted", presence.unmounted_mounts.len()));
+			}
+			if !presence.missing_mounts.is_empty() {
+				states.push(format!("{} missing", presence.missing_mounts.len()));
+			}
+			eprintln!("    {}: {} ({})", key, purpose, states.join(", "));
+		}
+		eprintln!();
+	}
+
+	if !missing_copies.is_empty() {
+		found_issues = true;
+		eprintln!("  missing copies (registered but absent from a mounted root):");
+		for (key, mounts) in &missing_copies {
+			for mount in mounts {
+				eprintln!("    {} not at {}", key, mount);
+			}
 		}
 		eprintln!();
 	}
@@ -158,10 +222,12 @@ pub fn run(
 	}
 
 	eprintln!(
-		"audit: {} registered, {} scanned, {} lost, {} underprotected, {} strays, {} new locations",
+		"audit: {} registered, {} scanned, {} lost, {} unreachable, {} missing copies, {} underprotected, {} strays, {} new locations",
 		registered_keys.len(),
 		scanned_roots.len(),
 		lost.len(),
+		unreachable.len(),
+		missing_copies.len(),
 		underprotected.len(),
 		strays.len(),
 		newly_registered.len(),
