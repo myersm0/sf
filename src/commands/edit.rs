@@ -3,7 +3,7 @@ use std::process::Command;
 
 use crate::config::AppConfig;
 use crate::db::Database;
-use crate::embed::{self, OllamaClient};
+use crate::embed::{self, EmbeddingClient};
 use crate::meta::DirMeta;
 
 fn confirm(question: &str) -> io::Result<bool> {
@@ -18,6 +18,7 @@ fn confirm(question: &str) -> io::Result<bool> {
 pub fn run(
 	db: &Database,
 	config: &AppConfig,
+	client: &dyn EmbeddingClient,
 	key: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
 	if !db.key_exists(key)? {
@@ -68,7 +69,6 @@ pub fn run(
 
 	if !state.is_current(&hash, &config.embedding_model) {
 		eprint!("  re-embedding...");
-		let client = OllamaClient::from_config(config);
 		let embedding = client.embed(&content.text)?;
 		let bytes = embed::embedding_to_bytes(&embedding);
 		db.set_embedding(key, &bytes, &config.embedding_model, &hash, content.has_docs)?;

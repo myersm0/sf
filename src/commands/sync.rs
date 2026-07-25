@@ -1,10 +1,14 @@
 use crate::config::AppConfig;
 use crate::db::Database;
-use crate::embed::{self, OllamaClient};
+use crate::embed::{self, EmbeddingClient};
 use crate::meta::DirMeta;
 
-pub fn run(db: &Database, config: &AppConfig, force: bool) -> Result<(), Box<dyn std::error::Error>> {
-	let client = OllamaClient::from_config(config);
+pub fn run(
+	db: &Database,
+	config: &AppConfig,
+	client: &dyn EmbeddingClient,
+	force: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
 	let rows = db.get_all_directories()?;
 
 	let mut updated = 0;
