@@ -84,7 +84,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 	let config = AppConfig::load()?;
 	let db = Database::open(&config.db_path)?;
 	db.initialize()?;
-   eprintln!("config path: {:?}", AppConfig::config_path());
 
 	match cli.command {
 		Commands::New { purpose, author, tags, path } => {

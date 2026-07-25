@@ -23,7 +23,9 @@ src/
 ├── db/
 │   └── schema.rs        SQLite schema and all database operations
 ├── embed/
-│   ├── ollama.rs        HTTP client for ollama's /api/embed endpoint
+│   ├── mod.rs           EmbeddingClient trait, backend dispatch, byte codec, truncation
+│   ├── ollama.rs        ollama backend (HTTP client with request timeouts)
+│   ├── openai.rs        OpenAI-compatible backend (OAuth2 client credentials)
 │   ├── content.rs       Text gathering and content hashing
 │   └── similarity.rs    Cosine similarity (and unused elbow method)
 ├── meta/
@@ -38,9 +40,9 @@ src/
 
 **Importing:** `sf import <key>` reads an existing `.meta.json` and registers it in the database. Accepts `--path` for non-default locations. No embedding happens at import time.
 
-**Embedding:** `sf sync` iterates all registered directories. For each, it resolves the key to an accessible location, gathers text (purpose + README.md or index files), hashes it, compares against the stored hash, and if changed, sends the text to ollama and stores the resulting f32 vector as a blob in SQLite. Directories without docs are skipped unless `--force` is used or `warn_no_docs` is set to false in config.
+**Embedding:** `sf sync` iterates all registered directories. For each, it resolves the key to an accessible location, gathers text (purpose + README.md or index files), hashes it, and compares against the stored content hash and the recorded embedding model; if either changed, it sends the text to the configured backend and stores the resulting f32 vector as a blob in SQLite, stamped with the model that produced it. Directories without docs are skipped unless `--force` is used or `warn_no_docs` is set to false in config; if a directory's docs have vanished since the last sync, its `has_docs` flag is cleared so search marks its score as unreliable.
 
-**Searching:** `sf search "query"` embeds the query via ollama, computes cosine similarity against all stored embeddings, filters by `min_similarity`, caps at `max_search_results`, and presents the picker. Metadata filters (author, tags, since) narrow the candidate set before scoring. Selecting a result records a visit in the `visits` table.
+**Searching:** `sf search "query"` embeds the query via the configured backend, computes cosine similarity against stored embeddings, filters by `min_similarity`, caps at `max_search_results`, and presents the picker. Embeddings whose recorded model differs from the configured one are skipped with a notice (never compared), as are rows with missing or corrupt embeddings. Metadata filters (author, tags, since) narrow the candidate set before scoring. Selecting a result records a timestamped visit in the `visits` table.
 
 **Co-access:** `sf coaccess <key>` reads the visit log, computes NPMI over a sliding window, and surfaces directories frequently visited in the same session as the given key.
 
@@ -54,11 +56,11 @@ src/
 
 Three tables:
 
-- `directories` — key, created, purpose, author, tags (JSON), embedding (blob), content_hash, has_docs
-- `locations` — (key, mount_path) pairs tracking where each directory exists
-- `visits` — append-only log of keys, ordered by insertion
+- `directories` — key, created, purpose, author, tags (JSON), embedding (blob), embedding_model, content_hash, has_docs
+- `locations` — (key, mount_path) pairs tracking where each directory exists; mount paths are stored tilde-expanded and canonicalized
+- `visits` — append-only log of keys with UTC RFC 3339 timestamps (`visited_at`; rows predating the column are NULL)
 
-The embedding is stored as little-endian f32 bytes. At the scale of hundreds to low thousands of directories, brute-force cosine similarity over all embeddings is fast enough that no approximate nearest neighbor index is needed.
+The schema is versioned via `PRAGMA user_version`, with migrations applied on startup; a database stamped with a newer version than the binary understands is refused rather than touched. Foreign keys are enforced per connection. The embedding is stored as little-endian f32 bytes. At the scale of hundreds to low thousands of directories, brute-force cosine similarity over all embeddings is fast enough that no approximate nearest neighbor index is needed.
 
 ### Embedding strategy
 
@@ -77,6 +79,10 @@ All settings have sensible defaults and are optionally overridden via a TOML fil
 **Flat hierarchy with random keys.** The core premise. Meaning lives in metadata and documents, not in paths. This eliminates the organizational rot that comes with hierarchical filesystems and makes every directory address permanent.
 
 **SQLite over flat files.** The database stores metadata, embeddings, locations, and visits in a single file. This is simpler than managing multiple flat files and makes filtered queries trivial. The `rusqlite` crate with the `bundled` feature compiles SQLite into the binary, so there are no runtime dependencies.
+
+**Embedding backends behind a trait.** Commands take a `&dyn EmbeddingClient`, constructed once in `main` from config. The ollama backend is the default; the openai backend exists for machines where running ollama isn't approved, and authenticates via OAuth2 client credentials (corporate-gateway style) with the id and secret taken from environment variables and tokens cached in memory. Requests are bounded by explicit connect and overall timeouts so a wedged server fails fast instead of hanging.
+
+**Per-embedding model tracking.** Every embedding records the model that produced it. Staleness is per row — content hash or model changed — so a model switch re-embeds exactly what needs it on the next `sf sync`, and search refuses to compare vectors across models. No global marker or bulk clear is needed. Embeddings that predate the tracking column (NULL model) are grandfathered as current until next re-embedded.
 
 **Ollama over built-in models.** Embedding models are large and change rapidly. Delegating to ollama keeps the binary small and lets users swap models without recompiling. The tradeoff is a runtime dependency on ollama, but anyone running local AI tools likely already has it.
 
@@ -100,6 +106,8 @@ cargo build --release
 cargo test
 ```
 
+Unit tests live alongside the modules they cover: NPMI co-access semantics, cosine similarity and the elbow cutoff, text truncation and the embedding byte codec, metadata roundtrips (including preservation of unknown fields), and database behavior (migrations, filters, foreign keys, model-currency rules) against in-memory SQLite.
+
 ### Making a release
 
 Tag and push:
@@ -112,6 +120,8 @@ git push origin v0.1.0
 The GitHub Actions release workflow builds for Linux x86_64, macOS x86_64, and macOS aarch64, then publishes tarballs to a GitHub release.
 
 ## Future directions
+
+The broader roadmap, including v0.2.0 and v0.3.0 scope, lives in [PLAN.md](PLAN.md). Feature-level notes below.
 
 **Audit content hashing.** Currently audit only checks presence. Planned: three-tier approach.
 - `sf audit` — presence only, updates `last_seen` per location. Always fast.

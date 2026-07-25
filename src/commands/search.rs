@@ -32,7 +32,7 @@ pub fn run(
 
 	let results: Vec<ScoredResult> = match query {
 		Some(ref query_text) => {
-			let client = client.expect("embedding client required for semantic search");
+			let client = client.ok_or("embedding client required for semantic search")?;
 			let query_embedding = client.embed(query_text)?;
 
 			let mut scored: Vec<ScoredResult> = Vec::new();

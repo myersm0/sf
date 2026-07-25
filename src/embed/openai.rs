@@ -2,6 +2,9 @@ use std::cell::RefCell;
 use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
+use ureq::{Agent, AgentBuilder};
+
+use crate::config::AppConfig;
 
 use super::{EmbeddingClient, truncate_text};
 
@@ -33,6 +36,7 @@ struct CachedToken {
 }
 
 pub struct OpenAiClient {
+	agent: Agent,
 	base_url: String,
 	model: String,
 	max_chars: usize,
@@ -44,25 +48,24 @@ pub struct OpenAiClient {
 }
 
 impl OpenAiClient {
-	pub fn new(
-		base_url: &str,
-		model: &str,
-		max_chars: usize,
-		token_url: &str,
-		scope: &str,
-	) -> Result<Self, Box<dyn std::error::Error>> {
+	pub fn from_config(config: &AppConfig) -> Result<Self, Box<dyn std::error::Error>> {
 		let client_id = std::env::var("SF_OAUTH2_CLIENT_ID")
 			.map_err(|_| "SF_OAUTH2_CLIENT_ID env var not set")?;
 		let client_secret = std::env::var("SF_OAUTH2_CLIENT_SECRET")
 			.map_err(|_| "SF_OAUTH2_CLIENT_SECRET env var not set")?;
+		let agent = AgentBuilder::new()
+			.timeout_connect(Duration::from_secs(5))
+			.timeout(Duration::from_secs(config.openai.timeout_seconds))
+			.build();
 		Ok(Self {
-			base_url: base_url.trim_end_matches('/').to_string(),
-			model: model.to_string(),
-			max_chars,
-			token_url: token_url.to_string(),
+			agent,
+			base_url: config.openai.url.trim_end_matches('/').to_string(),
+			model: config.embedding_model.clone(),
+			max_chars: config.max_embed_chars,
+			token_url: config.openai.oauth2_token_url.clone(),
 			client_id,
 			client_secret,
-			scope: scope.to_string(),
+			scope: config.openai.oauth2_scope.clone(),
 			cached_token: RefCell::new(None),
 		})
 	}
@@ -80,9 +83,10 @@ impl OpenAiClient {
 			urlencoding::encode(&self.client_secret),
 			urlencoding::encode(&self.scope),
 		);
-		let response = ureq::post(&self.token_url)
+		let response = self.agent.post(&self.token_url)
 			.set("Content-Type", "application/x-www-form-urlencoded")
-			.send_string(&form_body)?;
+			.send_string(&form_body)
+			.map_err(|error| format!("token request to {} failed: {}", self.token_url, error))?;
 		let token_response: TokenResponse = response.into_json()?;
 		let margin = Duration::from_secs(60);
 		let expires_at = Instant::now() + Duration::from_secs(token_response.expires_in) - margin;
@@ -105,7 +109,7 @@ impl EmbeddingClient for OpenAiClient {
 			model: &self.model,
 			input: truncated,
 		};
-		let result = ureq::post(&url)
+		let result = self.agent.post(url)
 			.set("Authorization", &format!("Bearer {}", token))
 			.send_json(serde_json::to_value(&request)?);
 		match result {
@@ -119,7 +123,7 @@ impl EmbeddingClient for OpenAiClient {
 				let body = response.into_string().unwrap_or_default();
 				Err(format!("openai returned {}: {}", code, body).into())
 			}
-			Err(e) => Err(e.into()),
+			Err(error) => Err(format!("openai request to {} failed: {}", url, error).into()),
 		}
 	}
 }
