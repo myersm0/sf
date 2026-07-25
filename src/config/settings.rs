@@ -86,6 +86,9 @@ impl AppConfig {
 		config.backup_locations = config.backup_locations.iter()
 			.map(|location| expand_tilde(location))
 			.collect();
+		if config.meta_filenames.is_empty() {
+			return Err("meta_filenames must contain at least one filename".into());
+		}
 		Ok(config)
 	}
 }

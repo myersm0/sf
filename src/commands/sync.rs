@@ -36,6 +36,9 @@ pub fn run(db: &Database, config: &AppConfig, force: bool) -> Result<(), Box<dyn
 
 		if !content.has_docs {
 			no_docs.push(row.key.clone());
+			if row.has_docs {
+				db.set_has_docs(&row.key, false)?;
+			}
 			if !force && config.warn_no_docs {
 				eprintln!("  skip {}: no docs (use --force to embed anyway)", row.key);
 				skipped += 1;

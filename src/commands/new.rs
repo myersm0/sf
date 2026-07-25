@@ -58,26 +58,23 @@ pub fn run(
 		}
 	};
 
-	let author = author
-		.or_else(|| {
-			if !config.default_author.is_empty() {
-				Some(config.default_author.clone())
-			} else {
-				None
-			}
-		})
-		.unwrap_or_else(|| {
-			prompt("author").unwrap_or_default()
-		});
+	let author = match author {
+		Some(author) => author,
+		None if !config.default_author.is_empty() => config.default_author.clone(),
+		None => prompt("author")?,
+	};
 
-	let tags = tags.unwrap_or_else(|| {
-		let input = prompt("tags (comma-separated)").unwrap_or_default();
-		if input.is_empty() {
-			Vec::new()
-		} else {
-			input.split(',').map(|s| s.trim().to_string()).collect()
+	let tags = match tags {
+		Some(tags) => tags,
+		None => {
+			let input = prompt("tags (comma-separated)")?;
+			if input.is_empty() {
+				Vec::new()
+			} else {
+				input.split(',').map(|s| s.trim().to_string()).collect()
+			}
 		}
-	});
+	};
 
 	let dir_path = root.join(&key);
 	std::fs::create_dir_all(&dir_path)?;

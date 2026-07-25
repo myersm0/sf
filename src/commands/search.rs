@@ -51,7 +51,13 @@ pub fn run(
 						continue;
 					}
 				}
-				let stored_embedding = embed::bytes_to_embedding(&stored.bytes);
+				let stored_embedding = match embed::bytes_to_embedding(&stored.bytes) {
+					Ok(vector) => vector,
+					Err(error) => {
+						eprintln!("  (skipping {}: {})", row.key, error);
+						continue;
+					}
+				};
 				let score = embed::cosine_similarity(&query_embedding, &stored_embedding);
 				scored.push(ScoredResult {
 					key: row.key.clone(),

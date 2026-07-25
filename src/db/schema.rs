@@ -284,6 +284,14 @@ impl Database {
 		Ok(())
 	}
 
+	pub fn set_has_docs(&self, key: &str, has_docs: bool) -> Result<(), Box<dyn std::error::Error>> {
+		self.connection.execute(
+			"UPDATE directories SET has_docs = ?1 WHERE key = ?2",
+			params![has_docs as i32, key],
+		)?;
+		Ok(())
+	}
+
 	pub fn get_embedding_state(&self, key: &str) -> Result<EmbeddingState, Box<dyn std::error::Error>> {
 		let mut statement = self.connection.prepare(
 			"SELECT content_hash, embedding_model FROM directories WHERE key = ?1"

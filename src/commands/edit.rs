@@ -1,9 +1,19 @@
+use std::io::{self, Write};
 use std::process::Command;
 
 use crate::config::AppConfig;
 use crate::db::Database;
 use crate::embed::{self, OllamaClient};
 use crate::meta::DirMeta;
+
+fn confirm(question: &str) -> io::Result<bool> {
+	eprint!("{} [Y/n] ", question);
+	io::stderr().flush()?;
+	let mut input = String::new();
+	io::stdin().read_line(&mut input)?;
+	let answer = input.trim().to_lowercase();
+	Ok(answer.is_empty() || answer == "y" || answer == "yes")
+}
 
 pub fn run(
 	db: &Database,
@@ -20,25 +30,34 @@ pub fn run(
 		.ok_or_else(|| format!("no metadata file found in {}", dir_path.display()))?;
 
 	let before = std::fs::read_to_string(&meta_path)?;
-
 	let editor = std::env::var("EDITOR").unwrap_or_else(|_| "vi".to_string());
-	let status = Command::new(&editor)
-		.arg(&meta_path)
-		.status()?;
 
-	if !status.success() {
-		return Err("editor exited with non-zero status".into());
-	}
+	let meta = loop {
+		let status = Command::new(&editor)
+			.arg(&meta_path)
+			.status()?;
+		if !status.success() {
+			return Err("editor exited with non-zero status".into());
+		}
 
-	let after = std::fs::read_to_string(&meta_path)?;
-	if before == after {
-		eprintln!("no changes");
-		return Ok(());
-	}
+		let after = std::fs::read_to_string(&meta_path)?;
+		if before == after {
+			eprintln!("no changes");
+			return Ok(());
+		}
 
-	let meta: DirMeta = serde_json::from_str(&after).map_err(|e| {
-		format!("invalid json after edit: {}", e)
-	})?;
+		match serde_json::from_str::<DirMeta>(&after) {
+			Ok(meta) => break meta,
+			Err(error) => {
+				eprintln!("invalid json after edit: {}", error);
+				if !confirm("fix in editor?")? {
+					std::fs::write(&meta_path, &before)?;
+					eprintln!("restored previous metadata");
+					return Ok(());
+				}
+			}
+		}
+	};
 
 	db.update_directory(key, &meta.purpose, &meta.author, &meta.tags)?;
 	eprintln!("updated metadata for {}", key);

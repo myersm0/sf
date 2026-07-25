@@ -78,11 +78,16 @@ pub fn embedding_to_bytes(embedding: &[f32]) -> Vec<u8> {
 		.collect()
 }
 
-pub fn bytes_to_embedding(bytes: &[u8]) -> Vec<f32> {
-	bytes.chunks_exact(4)
+pub fn bytes_to_embedding(bytes: &[u8]) -> Result<Vec<f32>, Box<dyn std::error::Error>> {
+	if bytes.len() % 4 != 0 {
+		return Err(format!(
+			"corrupt embedding blob: {} bytes is not a multiple of 4", bytes.len(),
+		).into());
+	}
+	Ok(bytes.chunks_exact(4)
 		.map(|chunk| {
 			let arr: [u8; 4] = chunk.try_into().unwrap();
 			f32::from_le_bytes(arr)
 		})
-		.collect()
+		.collect())
 }
