@@ -15,6 +15,7 @@ pub fn run(
 	let mut updated = 0;
 	let mut skipped = 0;
 	let mut errors = 0;
+	let mut reconciled = 0;
 	let mut no_docs = Vec::new();
 
 	for row in &rows {
@@ -35,6 +36,16 @@ pub fn run(
 				continue;
 			}
 		};
+
+		let stale_metadata = meta.created != row.created
+			|| meta.purpose != row.purpose
+			|| meta.author != row.author
+			|| meta.tags != row.tags();
+		if stale_metadata {
+			db.update_directory(&row.key, &meta.created, &meta.purpose, &meta.author, &meta.tags)?;
+			eprintln!("  reconcile {}: metadata changed on disk", row.key);
+			reconciled += 1;
+		}
 
 		let content = embed::gather_text(&dir_path, &meta);
 		let hash = embed::compute_content_hash(&content.text);
@@ -82,8 +93,8 @@ pub fn run(
 	}
 
 	eprintln!(
-		"sync complete: {} updated, {} unchanged, {} errors",
-		updated, skipped, errors,
+		"sync complete: {} embedded, {} unchanged, {} reconciled, {} errors",
+		updated, skipped, reconciled, errors,
 	);
 
 	Ok(())

@@ -33,9 +33,8 @@ pub fn run(
 		}
 	};
 
-	let author = match author {
+	let author = match author.or_else(|| config.resolve_author()) {
 		Some(author) => author,
-		None if !config.default_author.is_empty() => config.default_author.clone(),
 		None => prompt::ask("author")?,
 	};
 

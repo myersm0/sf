@@ -104,12 +104,31 @@ pub fn expand_tilde(path: &Path) -> PathBuf {
 	path.to_path_buf()
 }
 
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn configured_author_wins_over_the_environment() {
+		let mut config = AppConfig::default();
+		config.default_author = "myersm0".to_string();
+		assert_eq!(config.resolve_author().as_deref(), Some("myersm0"));
+	}
+}
+
 impl AppConfig {
 	pub fn config_path() -> PathBuf {
 		dirs::config_dir()
 			.unwrap_or_else(|| PathBuf::from("."))
 			.join("sf")
 			.join("config.toml")
+	}
+
+	pub fn resolve_author(&self) -> Option<String> {
+		if !self.default_author.is_empty() {
+			return Some(self.default_author.clone());
+		}
+		std::env::var("USER").ok().filter(|user| !user.is_empty())
 	}
 
 	pub fn load() -> Result<Self, Box<dyn std::error::Error>> {

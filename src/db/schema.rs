@@ -120,14 +120,15 @@ impl Database {
 	pub fn update_directory(
 		&self,
 		key: &str,
+		created: &str,
 		purpose: &str,
 		author: &str,
 		tags: &[String],
 	) -> Result<(), Box<dyn std::error::Error>> {
 		let tags_json = serde_json::to_string(tags)?;
 		self.connection.execute(
-			"UPDATE directories SET purpose = ?1, author = ?2, tags = ?3 WHERE key = ?4",
-			params![purpose, author, tags_json, key],
+			"UPDATE directories SET created = ?1, purpose = ?2, author = ?3, tags = ?4 WHERE key = ?5",
+			params![created, purpose, author, tags_json, key],
 		)?;
 		Ok(())
 	}
@@ -445,6 +446,18 @@ mod tests {
 		assert_eq!(row.purpose, "purpose");
 		assert_eq!(row.tags(), vec!["x".to_string(), "y".to_string()]);
 		assert!(db.get_directory("zzz999").unwrap().is_none());
+	}
+
+	#[test]
+	fn update_directory_rewrites_every_mirrored_field() {
+		let db = test_db();
+		db.insert_directory("abc123", "2026-01-01", "old", "alice", &["x".to_string()]).unwrap();
+		db.update_directory("abc123", "2026-06-01", "new", "bob", &["y".to_string()]).unwrap();
+		let row = db.get_directory("abc123").unwrap().unwrap();
+		assert_eq!(row.created, "2026-06-01");
+		assert_eq!(row.purpose, "new");
+		assert_eq!(row.author, "bob");
+		assert_eq!(row.tags(), vec!["y".to_string()]);
 	}
 
 	#[test]
