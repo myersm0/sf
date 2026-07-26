@@ -6,3 +6,4 @@ pub mod coaccess;
 pub mod import;
 pub mod edit;
 pub mod audit;
+pub mod validate;

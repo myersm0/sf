@@ -72,6 +72,11 @@ enum Commands {
 	Edit {
 		key: String,
 	},
+	/// Check metadata against the schema
+	Validate {
+		/// Key or path to check; defaults to every registered directory
+		target: Option<String>,
+	},
 	/// Register an existing directory in the database
 	Import {
 		key: String,
@@ -122,6 +127,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 		}
 		Commands::Import { key, path } => {
 			commands::import::run(&db, &config, &key, path)?;
+		}
+		Commands::Validate { target } => {
+			if !commands::validate::run(&db, &config, target)? {
+				std::process::exit(1);
+			}
 		}
 	}
 
