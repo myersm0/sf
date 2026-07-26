@@ -77,12 +77,16 @@ enum Commands {
 		/// Key or path to check; defaults to every registered directory
 		target: Option<String>,
 	},
-	/// Register an existing directory in the database
+	/// Bring an existing directory under management
 	Import {
-		key: String,
-		/// Root path where the directory lives (defaults to contents_path)
+		/// Path to the directory, or its name within the root
+		target: String,
+		/// Root the directory lives in (defaults to contents_path)
 		#[arg(long)]
 		path: Option<PathBuf>,
+		/// Rename without confirming
+		#[arg(short, long)]
+		force: bool,
 	},
 }
 
@@ -125,8 +129,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 			let client = embed::build_client(&config)?;
 			commands::edit::run(&db, &config, client.as_ref(), &key)?;
 		}
-		Commands::Import { key, path } => {
-			commands::import::run(&db, &config, &key, path)?;
+		Commands::Import { target, path, force } => {
+			commands::import::run(&db, &config, &target, path, force)?;
 		}
 		Commands::Validate { target } => {
 			if !commands::validate::run(&db, &config, target)? {

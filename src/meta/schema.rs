@@ -11,6 +11,8 @@ pub struct DirMeta {
 	pub tags: Vec<String>,
 	#[serde(default, skip_serializing_if = "Vec::is_empty")]
 	pub index: Vec<String>,
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub source_name: Option<String>,
 	#[serde(flatten)]
 	pub extra: serde_json::Map<String, serde_json::Value>,
 }
@@ -60,17 +62,17 @@ mod tests {
 			"created": "2026-03-06",
 			"purpose": "sf project",
 			"author": "m",
-			"key": "301018",
-			"class": "A"
+			"class": "A",
+			"reviewed": "2026-05-01"
 		}"#;
 		let meta: DirMeta = serde_json::from_str(source).unwrap();
-		assert_eq!(meta.extra.get("key").unwrap(), "301018");
 		assert_eq!(meta.extra.get("class").unwrap(), "A");
+		assert_eq!(meta.extra.get("reviewed").unwrap(), "2026-05-01");
 
 		let serialized = serde_json::to_string_pretty(&meta).unwrap();
 		let reparsed: serde_json::Value = serde_json::from_str(&serialized).unwrap();
-		assert_eq!(reparsed["key"], "301018");
 		assert_eq!(reparsed["class"], "A");
+		assert_eq!(reparsed["reviewed"], "2026-05-01");
 		assert_eq!(reparsed["purpose"], "sf project");
 	}
 

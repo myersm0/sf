@@ -4,7 +4,7 @@ use sha2::{Digest, Sha256};
 
 use crate::meta::DirMeta;
 
-fn find_readme(dir: &Path) -> Option<PathBuf> {
+pub fn find_readme(dir: &Path) -> Option<PathBuf> {
 	let entries = std::fs::read_dir(dir).ok()?;
 	for entry in entries.flatten() {
 		let name = entry.file_name();

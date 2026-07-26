@@ -59,6 +59,7 @@ pub fn run(
 		author: author.clone(),
 		tags: tags.clone(),
 		index: Vec::new(),
+		source_name: None,
 		extra: serde_json::Map::new(),
 	};
 	meta.save(&dir_path, &config.meta_filenames)?;

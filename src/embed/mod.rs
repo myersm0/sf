@@ -3,7 +3,7 @@ mod ollama;
 mod openai;
 mod similarity;
 
-pub use content::{gather_text, compute_content_hash, GatheredContent};
+pub use content::{find_readme, gather_text, compute_content_hash, GatheredContent};
 pub use similarity::cosine_similarity;
 
 use crate::config::{AppConfig, EmbeddingBackend};

@@ -41,6 +41,10 @@ impl Finding {
 	}
 }
 
+pub fn has_errors(findings: &[Finding]) -> bool {
+	findings.iter().any(|finding| finding.severity == Severity::Error)
+}
+
 fn is_iso_date(value: &str) -> bool {
 	NaiveDate::parse_from_str(value, "%Y-%m-%d")
 		.map(|date| date.format("%Y-%m-%d").to_string() == value)
