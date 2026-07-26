@@ -4,6 +4,7 @@ pub mod search;
 pub mod sync;
 pub mod coaccess;
 pub mod import;
+pub mod clone;
 pub mod edit;
 pub mod audit;
 pub mod validate;

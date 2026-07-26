@@ -137,21 +137,39 @@ pub fn run(
 	force: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
 	let dir_path = locate(config, target, path)?;
+	let name = dir_path.file_name()
+		.map(|name| name.to_string_lossy().to_string())
+		.ok_or_else(|| format!("{} has no directory name", dir_path.display()))?;
+
+	if keys::is_valid(&name) && db.key_exists(&name)? {
+		let root = dir_path.parent()
+			.ok_or_else(|| format!("{} has no parent directory", dir_path.display()))?;
+		return register_location(db, &name, root);
+	}
+
+	adopt(db, config, &dir_path, None, force)?;
+	Ok(())
+}
+
+pub fn adopt(
+	db: &Database,
+	config: &AppConfig,
+	dir_path: &Path,
+	source: Option<&str>,
+	force: bool,
+) -> Result<Option<String>, Box<dyn std::error::Error>> {
 	let root = dir_path.parent()
 		.ok_or_else(|| format!("{} has no parent directory", dir_path.display()))?
 		.to_path_buf();
 	let name = dir_path.file_name()
 		.map(|name| name.to_string_lossy().to_string())
 		.ok_or_else(|| format!("{} has no directory name", dir_path.display()))?;
+	let source_name = source.unwrap_or(&name).to_string();
 
-	if keys::is_valid(&name) && db.key_exists(&name)? {
-		return register_location(db, &name, &root);
-	}
-
-	let found = read_metadata(&dir_path, config)?;
+	let found = read_metadata(dir_path, config)?;
 	let was_absent = found.is_none();
 	if let Some(meta) = &found {
-		report(&validate::check_in_directory(meta, &dir_path))?;
+		report(&validate::check_in_directory(meta, dir_path))?;
 	}
 
 	let contents_root = std::fs::canonicalize(&config.contents_path)
@@ -167,30 +185,37 @@ pub fn run(
 			).into());
 		}
 		let key = keys::generate_unique(db, &root)?;
-		let question = format!("rename {} to {} and register it?", name, key);
+		let question = format!("rename {} to {} and register it?", source_name, key);
 		if !force && !prompt::confirm_default_no(&question)? {
 			eprintln!("cancelled");
-			return Ok(());
+			return Ok(None);
 		}
 		Some(key)
 	};
 
 	let mut meta = match found {
 		Some(meta) => meta,
-		None => compose_metadata(config, &dir_path, &name)?,
+		None => compose_metadata(config, dir_path, &source_name)?,
 	};
+
+	let intended_source = if fresh_key.is_some() || source.is_some() {
+		Some(source_name.clone())
+	} else {
+		meta.source_name.clone()
+	};
+	let source_changed = meta.source_name != intended_source;
+	meta.source_name = intended_source;
 
 	let (key, final_path) = match &fresh_key {
 		Some(key) => {
 			let renamed_path = root.join(key);
-			std::fs::rename(&dir_path, &renamed_path)?;
-			meta.source_name = Some(name.clone());
+			std::fs::rename(dir_path, &renamed_path)?;
 			(key.clone(), renamed_path)
 		}
-		None => (name.clone(), dir_path.clone()),
+		None => (name.clone(), dir_path.to_path_buf()),
 	};
 
-	if fresh_key.is_some() || was_absent {
+	if source_changed || was_absent {
 		meta.save(&final_path, &config.meta_filenames)?;
 	}
 
@@ -198,11 +223,11 @@ pub fn run(
 	db.add_location(&key, &root.to_string_lossy())?;
 
 	match &fresh_key {
-		Some(_) => eprintln!("imported {} as {} ({})", name, key, meta.purpose),
+		Some(_) => eprintln!("imported {} as {} ({})", source_name, key, meta.purpose),
 		None => eprintln!("imported {} ({})", key, meta.purpose),
 	}
 
-	Ok(())
+	Ok(Some(key))
 }
 
 #[cfg(test)]

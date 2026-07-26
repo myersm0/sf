@@ -80,6 +80,10 @@ enum Commands {
 		/// Key or path to check; defaults to every registered directory
 		target: Option<String>,
 	},
+	/// Clone a repository into the contents root and register it
+	Clone {
+		url: String,
+	},
 	/// Bring an existing directory under management
 	Import {
 		/// Path to the directory, or its name within the root
@@ -134,6 +138,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 		}
 		Commands::Import { target, path, force } => {
 			commands::import::run(&db, &config, &target, path, force)?;
+		}
+		Commands::Clone { url } => {
+			commands::clone::run(&db, &config, &url)?;
 		}
 		Commands::Validate { target } => {
 			if !commands::validate::run(&db, &config, target)? {
