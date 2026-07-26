@@ -1,6 +1,6 @@
 use crate::config::AppConfig;
 use crate::db::Database;
-use crate::embed::{self, EmbeddingClient};
+use crate::embed::{self, EmbeddingClient, EmbeddingIdentity};
 use crate::meta::DirMeta;
 
 pub fn run(
@@ -10,6 +10,7 @@ pub fn run(
 	force: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
 	let rows = db.get_all_directories()?;
+	let identity = EmbeddingIdentity::from_config(config);
 
 	let mut updated = 0;
 	let mut skipped = 0;
@@ -51,7 +52,7 @@ pub fn run(
 		}
 
 		let state = db.get_embedding_state(&row.key)?;
-		if state.is_current(&hash, &config.embedding_model) {
+		if state.is_current(&hash, &identity) {
 			skipped += 1;
 			continue;
 		}
@@ -60,7 +61,7 @@ pub fn run(
 		match client.embed(&content.text) {
 			Ok(embedding) => {
 				let bytes = embed::embedding_to_bytes(&embedding);
-				db.set_embedding(&row.key, &bytes, &config.embedding_model, &hash, content.has_docs)?;
+				db.set_embedding(&row.key, &bytes, &identity, &hash, content.has_docs)?;
 				eprintln!(" ok");
 				updated += 1;
 			}

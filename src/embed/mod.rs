@@ -8,6 +8,31 @@ pub use similarity::cosine_similarity;
 
 use crate::config::{AppConfig, EmbeddingBackend};
 
+pub struct EmbeddingIdentity {
+	pub backend: String,
+	pub model: String,
+}
+
+impl EmbeddingIdentity {
+	pub fn from_config(config: &AppConfig) -> Self {
+		Self {
+			backend: config.embedding_backend.name().to_string(),
+			model: config.embedding_model.clone(),
+		}
+	}
+
+	pub fn matches_stored(&self, backend: Option<&str>, model: Option<&str>) -> bool {
+		backend.map_or(true, |stored| stored == self.backend)
+			&& model.map_or(true, |stored| stored == self.model)
+	}
+}
+
+impl std::fmt::Display for EmbeddingIdentity {
+	fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		write!(formatter, "{}/{}", self.backend, self.model)
+	}
+}
+
 pub trait EmbeddingClient {
 	fn embed(&self, text: &str) -> Result<Vec<f32>, Box<dyn std::error::Error>>;
 }

@@ -3,7 +3,7 @@ use std::process::Command;
 
 use crate::config::AppConfig;
 use crate::db::Database;
-use crate::embed::{self, EmbeddingClient};
+use crate::embed::{self, EmbeddingClient, EmbeddingIdentity};
 use crate::meta::DirMeta;
 
 fn confirm(question: &str) -> io::Result<bool> {
@@ -66,12 +66,13 @@ pub fn run(
 	let content = embed::gather_text(&dir_path, &meta);
 	let hash = embed::compute_content_hash(&content.text);
 	let state = db.get_embedding_state(key)?;
+	let identity = EmbeddingIdentity::from_config(config);
 
-	if !state.is_current(&hash, &config.embedding_model) {
+	if !state.is_current(&hash, &identity) {
 		eprint!("  re-embedding...");
 		let embedding = client.embed(&content.text)?;
 		let bytes = embed::embedding_to_bytes(&embedding);
-		db.set_embedding(key, &bytes, &config.embedding_model, &hash, content.has_docs)?;
+		db.set_embedding(key, &bytes, &identity, &hash, content.has_docs)?;
 		eprintln!(" ok");
 	}
 

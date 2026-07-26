@@ -11,6 +11,15 @@ pub enum EmbeddingBackend {
 	OpenAi,
 }
 
+impl EmbeddingBackend {
+	pub fn name(&self) -> &'static str {
+		match self {
+			Self::Ollama => "ollama",
+			Self::OpenAi => "openai",
+		}
+	}
+}
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
 pub struct OpenAiConfig {

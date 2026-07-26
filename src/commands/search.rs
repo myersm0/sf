@@ -1,6 +1,6 @@
 use crate::config::AppConfig;
 use crate::db::Database;
-use crate::embed::{self, EmbeddingClient};
+use crate::embed::{self, EmbeddingClient, EmbeddingIdentity};
 use crate::picker::{self, PickerItem};
 
 struct ScoredResult {
@@ -34,6 +34,7 @@ pub fn run(
 		Some(ref query_text) => {
 			let client = client.ok_or("embedding client required for semantic search")?;
 			let query_embedding = client.embed(query_text)?;
+			let identity = EmbeddingIdentity::from_config(config);
 
 			let mut scored: Vec<ScoredResult> = Vec::new();
 			let mut missing = 0;
@@ -46,11 +47,9 @@ pub fn run(
 						continue;
 					}
 				};
-				if let Some(model) = &stored.model {
-					if model != &config.embedding_model {
-						mismatched += 1;
-						continue;
-					}
+				if !identity.matches_stored(stored.backend.as_deref(), stored.model.as_deref()) {
+					mismatched += 1;
+					continue;
 				}
 				let stored_embedding = match embed::bytes_to_embedding(&stored.bytes) {
 					Ok(vector) => vector,
@@ -77,10 +76,10 @@ pub fn run(
 			}
 			if mismatched > 0 {
 				eprintln!(
-					"  ({} director{} skipped: embedded with a different model than `{}`; run `sf sync`)",
+					"  ({} director{} skipped: not embedded with `{}`; run `sf sync`)",
 					mismatched,
 					if mismatched == 1 { "y" } else { "ies" },
-					config.embedding_model,
+					identity,
 				);
 			}
 

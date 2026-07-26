@@ -4,8 +4,10 @@ use chrono::{SecondsFormat, Utc};
 use rusqlite::{Connection, params};
 use serde_json;
 
+use crate::embed::EmbeddingIdentity;
+
 #[allow(non_upper_case_globals)]
-const current_schema_version: i32 = 2;
+const current_schema_version: i32 = 3;
 
 pub struct Database {
 	connection: Connection,
@@ -36,6 +38,9 @@ impl Database {
 		}
 		if version < 2 {
 			self.migrate_to_version_2()?;
+		}
+		if version < 3 {
+			self.migrate_to_version_3()?;
 		}
 		Ok(())
 	}
@@ -78,6 +83,14 @@ impl Database {
 			self.connection.execute("ALTER TABLE directories ADD COLUMN embedding_model TEXT", [])?;
 		}
 		self.connection.pragma_update(None, "user_version", 2)?;
+		Ok(())
+	}
+
+	fn migrate_to_version_3(&self) -> Result<(), Box<dyn std::error::Error>> {
+		if !self.column_exists("directories", "embedding_backend")? {
+			self.connection.execute("ALTER TABLE directories ADD COLUMN embedding_backend TEXT", [])?;
+		}
+		self.connection.pragma_update(None, "user_version", 3)?;
 		Ok(())
 	}
 
@@ -252,18 +265,19 @@ impl Database {
 
 	pub fn get_embedding(&self, key: &str) -> Result<Option<StoredEmbedding>, Box<dyn std::error::Error>> {
 		let mut statement = self.connection.prepare(
-			"SELECT embedding, embedding_model FROM directories WHERE key = ?1"
+			"SELECT embedding, embedding_backend, embedding_model FROM directories WHERE key = ?1"
 		)?;
 		let mut rows = statement.query_map(params![key], |row| {
 			Ok((
 				row.get::<_, Option<Vec<u8>>>(0)?,
 				row.get::<_, Option<String>>(1)?,
+				row.get::<_, Option<String>>(2)?,
 			))
 		})?;
 		match rows.next() {
 			Some(row) => {
-				let (bytes, model) = row?;
-				Ok(bytes.map(|bytes| StoredEmbedding { bytes, model }))
+				let (bytes, backend, model) = row?;
+				Ok(bytes.map(|bytes| StoredEmbedding { bytes, backend, model }))
 			}
 			None => Ok(None),
 		}
@@ -273,13 +287,13 @@ impl Database {
 		&self,
 		key: &str,
 		embedding: &[u8],
-		model: &str,
+		identity: &EmbeddingIdentity,
 		content_hash: &str,
 		has_docs: bool,
 	) -> Result<(), Box<dyn std::error::Error>> {
 		self.connection.execute(
-			"UPDATE directories SET embedding = ?1, embedding_model = ?2, content_hash = ?3, has_docs = ?4 WHERE key = ?5",
-			params![embedding, model, content_hash, has_docs as i32, key],
+			"UPDATE directories SET embedding = ?1, embedding_backend = ?2, embedding_model = ?3, content_hash = ?4, has_docs = ?5 WHERE key = ?6",
+			params![embedding, identity.backend, identity.model, content_hash, has_docs as i32, key],
 		)?;
 		Ok(())
 	}
@@ -294,17 +308,18 @@ impl Database {
 
 	pub fn get_embedding_state(&self, key: &str) -> Result<EmbeddingState, Box<dyn std::error::Error>> {
 		let mut statement = self.connection.prepare(
-			"SELECT content_hash, embedding_model FROM directories WHERE key = ?1"
+			"SELECT content_hash, embedding_backend, embedding_model FROM directories WHERE key = ?1"
 		)?;
 		let mut rows = statement.query_map(params![key], |row| {
 			Ok(EmbeddingState {
 				content_hash: row.get(0)?,
-				model: row.get(1)?,
+				backend: row.get(1)?,
+				model: row.get(2)?,
 			})
 		})?;
 		match rows.next() {
 			Some(row) => Ok(row?),
-			None => Ok(EmbeddingState { content_hash: None, model: None }),
+			None => Ok(EmbeddingState { content_hash: None, backend: None, model: None }),
 		}
 	}
 
@@ -353,19 +368,20 @@ impl Database {
 
 pub struct StoredEmbedding {
 	pub bytes: Vec<u8>,
+	pub backend: Option<String>,
 	pub model: Option<String>,
 }
 
 pub struct EmbeddingState {
 	pub content_hash: Option<String>,
+	pub backend: Option<String>,
 	pub model: Option<String>,
 }
 
 impl EmbeddingState {
-	pub fn is_current(&self, content_hash: &str, configured_model: &str) -> bool {
-		let hash_matches = self.content_hash.as_deref() == Some(content_hash);
-		let model_matches = self.model.as_deref().map_or(true, |model| model == configured_model);
-		hash_matches && model_matches
+	pub fn is_current(&self, content_hash: &str, identity: &EmbeddingIdentity) -> bool {
+		self.content_hash.as_deref() == Some(content_hash)
+			&& identity.matches_stored(self.backend.as_deref(), self.model.as_deref())
 	}
 }
 
@@ -388,6 +404,13 @@ impl DirectoryRow {
 mod tests {
 	use super::*;
 	use rusqlite::Connection;
+
+	fn identity(backend: &str, model: &str) -> EmbeddingIdentity {
+		EmbeddingIdentity {
+			backend: backend.to_string(),
+			model: model.to_string(),
+		}
+	}
 
 	fn test_db() -> Database {
 		let connection = Connection::open_in_memory().unwrap();
@@ -467,27 +490,60 @@ mod tests {
 	fn embedding_state_currency_rules() {
 		let db = test_db();
 		db.insert_directory("abc123", "2026-01-01", "p", "a", &[]).unwrap();
-		db.set_embedding("abc123", &[0u8; 8], "model-one", "hash-one", true).unwrap();
+		db.set_embedding("abc123", &[0u8; 8], &identity("ollama", "model-one"), "hash-one", true).unwrap();
 
 		let state = db.get_embedding_state("abc123").unwrap();
-		assert!(state.is_current("hash-one", "model-one"));
-		assert!(!state.is_current("hash-two", "model-one"));
-		assert!(!state.is_current("hash-one", "model-two"));
-
-		db.connection.execute("UPDATE directories SET embedding_model = NULL", []).unwrap();
-		let legacy = db.get_embedding_state("abc123").unwrap();
-		assert!(legacy.is_current("hash-one", "any-model"));
-		assert!(!legacy.is_current("hash-two", "any-model"));
+		assert!(state.is_current("hash-one", &identity("ollama", "model-one")));
+		assert!(!state.is_current("hash-two", &identity("ollama", "model-one")));
+		assert!(!state.is_current("hash-one", &identity("ollama", "model-two")));
 	}
 
 	#[test]
-	fn stored_embedding_carries_model() {
+	fn same_model_name_on_another_backend_is_stale() {
+		let db = test_db();
+		db.insert_directory("abc123", "2026-01-01", "p", "a", &[]).unwrap();
+		db.set_embedding("abc123", &[0u8; 8], &identity("ollama", "shared-name"), "hash-one", true).unwrap();
+		let state = db.get_embedding_state("abc123").unwrap();
+		assert!(state.is_current("hash-one", &identity("ollama", "shared-name")));
+		assert!(!state.is_current("hash-one", &identity("openai", "shared-name")));
+	}
+
+	#[test]
+	fn colons_in_model_names_survive_storage() {
+		let db = test_db();
+		db.insert_directory("abc123", "2026-01-01", "p", "a", &[]).unwrap();
+		db.set_embedding("abc123", &[0u8; 8], &identity("ollama", "qwen3-embedding:8b"), "h", true).unwrap();
+		let stored = db.get_embedding("abc123").unwrap().unwrap();
+		assert_eq!(stored.model.as_deref(), Some("qwen3-embedding:8b"));
+		assert_eq!(stored.backend.as_deref(), Some("ollama"));
+	}
+
+	#[test]
+	fn rows_predating_a_column_are_grandfathered() {
+		let db = test_db();
+		db.insert_directory("abc123", "2026-01-01", "p", "a", &[]).unwrap();
+		db.set_embedding("abc123", &[0u8; 8], &identity("ollama", "model-one"), "hash-one", true).unwrap();
+
+		db.connection.execute("UPDATE directories SET embedding_backend = NULL", []).unwrap();
+		let without_backend = db.get_embedding_state("abc123").unwrap();
+		assert!(without_backend.is_current("hash-one", &identity("openai", "model-one")));
+		assert!(!without_backend.is_current("hash-one", &identity("openai", "model-two")));
+
+		db.connection.execute("UPDATE directories SET embedding_model = NULL", []).unwrap();
+		let legacy = db.get_embedding_state("abc123").unwrap();
+		assert!(legacy.is_current("hash-one", &identity("anything", "any-model")));
+		assert!(!legacy.is_current("hash-two", &identity("anything", "any-model")));
+	}
+
+	#[test]
+	fn stored_embedding_carries_backend_and_model() {
 		let db = test_db();
 		db.insert_directory("abc123", "2026-01-01", "p", "a", &[]).unwrap();
 		assert!(db.get_embedding("abc123").unwrap().is_none());
-		db.set_embedding("abc123", &[1, 2, 3, 4], "m", "h", true).unwrap();
+		db.set_embedding("abc123", &[1, 2, 3, 4], &identity("openai", "m"), "h", true).unwrap();
 		let stored = db.get_embedding("abc123").unwrap().unwrap();
 		assert_eq!(stored.bytes, vec![1, 2, 3, 4]);
+		assert_eq!(stored.backend.as_deref(), Some("openai"));
 		assert_eq!(stored.model.as_deref(), Some("m"));
 	}
 
