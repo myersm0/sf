@@ -51,6 +51,9 @@ enum Commands {
 		author: Option<String>,
 		#[arg(long)]
 		since: Option<String>,
+		/// Name the directory had before sf renamed it
+		#[arg(long)]
+		source: Option<String>,
 	},
 	/// Show co-access neighbors of a key (NPMI)
 	Coaccess {
@@ -103,7 +106,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 		Commands::Info { key } => {
 			commands::info::run(&db, &key)?;
 		}
-		Commands::Search { query, tags, author, since } => {
+		Commands::Search { query, tags, author, since, source } => {
 			let client = if query.is_some() {
 				Some(embed::build_client(&config)?)
 			} else {
@@ -112,7 +115,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 			commands::search::run(
 				&db, &config,
 				client.as_ref().map(|c| c.as_ref()),
-				query, tags, author, since,
+				query, tags, author, since, source,
 			)?;
 		}
 		Commands::Coaccess { key, number } => {

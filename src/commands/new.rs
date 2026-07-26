@@ -64,7 +64,7 @@ pub fn run(
 	};
 	meta.save(&dir_path, &config.meta_filenames)?;
 
-	db.insert_directory(&key, &created, &purpose, &author, &tags)?;
+	db.insert_directory(&key, &meta)?;
 	let location = root.to_string_lossy().to_string();
 	db.add_location(&key, &location)?;
 

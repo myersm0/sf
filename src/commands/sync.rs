@@ -37,12 +37,8 @@ pub fn run(
 			}
 		};
 
-		let stale_metadata = meta.created != row.created
-			|| meta.purpose != row.purpose
-			|| meta.author != row.author
-			|| meta.tags != row.tags();
-		if stale_metadata {
-			db.update_directory(&row.key, &meta.created, &meta.purpose, &meta.author, &meta.tags)?;
+		if !row.mirrors(&meta) {
+			db.update_directory(&row.key, &meta)?;
 			eprintln!("  reconcile {}: metadata changed on disk", row.key);
 			reconciled += 1;
 		}

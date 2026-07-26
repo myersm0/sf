@@ -194,7 +194,7 @@ pub fn run(
 		meta.save(&final_path, &config.meta_filenames)?;
 	}
 
-	db.insert_directory(&key, &meta.created, &meta.purpose, &meta.author, &meta.tags)?;
+	db.insert_directory(&key, &meta)?;
 	db.add_location(&key, &root.to_string_lossy())?;
 
 	match &fresh_key {

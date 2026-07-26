@@ -13,6 +13,9 @@ pub fn run(db: &Database, key: &str) -> Result<(), Box<dyn std::error::Error>> {
 	if !tags.is_empty() {
 		eprintln!("  tags:     {}", tags.join(", "));
 	}
+	if let Some(source_name) = &row.source_name {
+		eprintln!("  source:   {}", source_name);
+	}
 	if !locations.is_empty() {
 		eprintln!("  locations:");
 		for location in &locations {

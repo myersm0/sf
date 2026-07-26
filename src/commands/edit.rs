@@ -51,7 +51,7 @@ pub fn run(
 		}
 	};
 
-	db.update_directory(key, &meta.created, &meta.purpose, &meta.author, &meta.tags)?;
+	db.update_directory(key, &meta)?;
 	eprintln!("updated metadata for {}", key);
 
 	let content = embed::gather_text(&dir_path, &meta);

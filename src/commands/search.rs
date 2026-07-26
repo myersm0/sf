@@ -18,10 +18,12 @@ pub fn run(
 	tags: Option<Vec<String>>,
 	author: Option<String>,
 	since: Option<String>,
+	source: Option<String>,
 ) -> Result<(), Box<dyn std::error::Error>> {
 	let candidates = db.search_directories(
 		author.as_deref(),
 		since.as_deref(),
+		source.as_deref(),
 		tags.as_deref(),
 	)?;
 
