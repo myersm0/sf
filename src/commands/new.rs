@@ -1,37 +1,12 @@
-use std::io::{self, Write};
 use std::path::PathBuf;
 
 use chrono::Local;
-use rand::Rng;
 
 use crate::config::{AppConfig, expand_tilde};
 use crate::db::Database;
+use crate::keys;
 use crate::meta::DirMeta;
-
-fn generate_key() -> String {
-	let mut rng = rand::thread_rng();
-	let value: u32 = rng.gen_range(0..0x1000000);
-	format!("{:06x}", value)
-}
-
-fn generate_unique_key(db: &Database, root: &PathBuf) -> Result<String, Box<dyn std::error::Error>> {
-	for _ in 0..100 {
-		let key = generate_key();
-		let dir_path = root.join(&key);
-		if !db.key_exists(&key)? && !dir_path.exists() {
-			return Ok(key);
-		}
-	}
-	Err("failed to generate a unique key after 100 attempts".into())
-}
-
-fn prompt(label: &str) -> io::Result<String> {
-	eprint!("{}: ", label);
-	io::stderr().flush()?;
-	let mut input = String::new();
-	io::stdin().read_line(&mut input)?;
-	Ok(input.trim().to_string())
-}
+use crate::prompt;
 
 pub fn run(
 	db: &Database,
@@ -44,13 +19,13 @@ pub fn run(
 	let root = expand_tilde(&path.unwrap_or_else(|| config.contents_path.clone()));
 	std::fs::create_dir_all(&root)?;
 	let root = std::fs::canonicalize(&root)?;
-	let key = generate_unique_key(db, &root)?;
+	let key = keys::generate_unique(db, &root)?;
 	let created = Local::now().format("%Y-%m-%d").to_string();
 
 	let purpose = match purpose {
 		Some(p) => p,
 		None => {
-			let p = prompt("purpose")?;
+			let p = prompt::ask("purpose")?;
 			if p.is_empty() {
 				return Err("purpose is required".into());
 			}
@@ -61,13 +36,13 @@ pub fn run(
 	let author = match author {
 		Some(author) => author,
 		None if !config.default_author.is_empty() => config.default_author.clone(),
-		None => prompt("author")?,
+		None => prompt::ask("author")?,
 	};
 
 	let tags = match tags {
 		Some(tags) => tags,
 		None => {
-			let input = prompt("tags (comma-separated)")?;
+			let input = prompt::ask("tags (comma-separated)")?;
 			if input.is_empty() {
 				Vec::new()
 			} else {

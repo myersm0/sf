@@ -1,19 +1,10 @@
-use std::io::{self, Write};
 use std::process::Command;
 
 use crate::config::AppConfig;
 use crate::db::Database;
 use crate::embed::{self, EmbeddingClient, EmbeddingIdentity};
 use crate::meta::DirMeta;
-
-fn confirm(question: &str) -> io::Result<bool> {
-	eprint!("{} [Y/n] ", question);
-	io::stderr().flush()?;
-	let mut input = String::new();
-	io::stdin().read_line(&mut input)?;
-	let answer = input.trim().to_lowercase();
-	Ok(answer.is_empty() || answer == "y" || answer == "yes")
-}
+use crate::prompt;
 
 pub fn run(
 	db: &Database,
@@ -51,7 +42,7 @@ pub fn run(
 			Ok(meta) => break meta,
 			Err(error) => {
 				eprintln!("invalid json after edit: {}", error);
-				if !confirm("fix in editor?")? {
+				if !prompt::confirm("fix in editor?")? {
 					std::fs::write(&meta_path, &before)?;
 					eprintln!("restored previous metadata");
 					return Ok(());

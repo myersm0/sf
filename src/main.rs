@@ -2,8 +2,10 @@ mod commands;
 mod config;
 mod db;
 mod embed;
+mod keys;
 mod meta;
 mod picker;
+mod prompt;
 
 use std::path::PathBuf;
 

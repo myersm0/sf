@@ -1,28 +1,26 @@
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
-use regex::Regex;
-
 use crate::config::AppConfig;
 use crate::db::Database;
+use crate::keys;
 
 fn scan_hex_dirs(root: &Path) -> Vec<String> {
-	let hex_pattern = Regex::new(r"^[0-9a-f]{6}$").unwrap();
-	let mut keys = Vec::new();
+	let mut found = Vec::new();
 	let entries = match std::fs::read_dir(root) {
 		Ok(e) => e,
-		Err(_) => return keys,
+		Err(_) => return found,
 	};
 	for entry in entries.flatten() {
 		if !entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
 			continue;
 		}
 		let name = entry.file_name().to_string_lossy().to_string();
-		if hex_pattern.is_match(&name) {
-			keys.push(name);
+		if keys::is_valid(&name) {
+			found.push(name);
 		}
 	}
-	keys
+	found
 }
 
 struct LocationPresence {
